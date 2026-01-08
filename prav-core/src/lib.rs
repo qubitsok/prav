@@ -63,6 +63,9 @@
 /// Arena-based memory allocator for no_std environments.
 pub mod arena;
 
+/// Circuit-level QEC types (DEM, detectors, error mechanisms).
+pub mod circuit;
+
 /// Core decoder types, traits, and implementations.
 pub mod decoder;
 
@@ -74,6 +77,9 @@ pub mod qec_engine;
 
 /// Pre-configured test grid sizes and error probabilities.
 pub mod testing_grids;
+
+/// 3D grid configurations for circuit-level QEC benchmarks.
+pub mod testing_grids_3d;
 
 /// Grid topology definitions (square, 3D, triangular, honeycomb).
 pub mod topology;
@@ -106,6 +112,7 @@ pub use qec_engine::QecEngine;
 
 // Testing utilities
 pub use testing_grids::{isqrt, GridConfig, TestGrids, ERROR_PROBS};
+pub use testing_grids_3d::{Grid3DConfig, SurfaceCodeType, TestGrids3D, CIRCUIT_ERROR_PROBS};
 
 // Topology types
 pub use topology::{Grid3D, HoneycombGrid, SquareGrid, Topology, TriangularGrid};
@@ -113,3 +120,6 @@ pub use topology::INTRA_BLOCK_NEIGHBORS;
 
 // Morton encoding (commonly needed for defect generation)
 pub use intrinsics::morton_encode_2d;
+
+// Circuit-level types
+pub use circuit::{CompiledDem, Detector, ErrorMechanism, ErrorTarget, LogicalObservable};

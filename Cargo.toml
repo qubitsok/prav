@@ -5,6 +5,7 @@ members = [
     "prav-core/bench-suite",
     "prav-py",
     "prav-fb-bench",
+    "prav-circuit-bench",
 ]
 resolver = "2"
 
