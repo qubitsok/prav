@@ -4,126 +4,139 @@ Contact: qubits@qubitsok.com | [LinkedIn](https://www.linkedin.com/in/piotrlewan
 
 # prav
 
-[![Crates.io](https://img.shields.io/crates/v/prav-core.svg)](https://crates.io/crates/prav-core)
-[![Documentation](https://docs.rs/prav-core/badge.svg)](https://docs.rs/prav-core)
-
 Union Find decoder for Quantum Error Correction.
+
+[![Crates.io](https://img.shields.io/crates/v/prav-core.svg)](https://crates.io/crates/prav-core)
+[![docs.rs](https://docs.rs/prav-core/badge.svg)](https://docs.rs/prav-core)
+[![PyPI](https://badge.fury.io/py/prav.svg)](https://pypi.org/project/prav/)
 
 ## What is this?
 
 Quantum computers accumulate errors during computation. Quantum Error Correction (QEC) detects these errors by measuring parity checks called syndromes. This library uses the Union Find algorithm to group syndromes into clusters and determine which corrections to apply.
 
+## Packages
+
+| Package | Description | Links |
+|---------|-------------|-------|
+| [prav-core](prav-core/) | Core Rust library (`no_std`, zero-heap) | [crates.io](https://crates.io/crates/prav-core) · [docs.rs](https://docs.rs/prav-core) |
+| [prav-py](prav-py/) | Python bindings via PyO3/maturin | [PyPI](https://pypi.org/project/prav/) |
+| [prav-fb-bench](prav-fb-bench/) | Rust benchmark: prav-core vs fusion-blossom | |
+| [prav-py-bench](prav-py-bench/) | Python benchmark: prav vs PyMatching | |
+
+## Quick Start
+
+### Rust
+
+```rust
+use prav_core::{Arena, DecoderBuilder, SquareGrid, EdgeCorrection, required_buffer_size};
+
+let size = required_buffer_size(32, 32, 1);
+let mut buffer = vec![0u8; size];
+let mut arena = Arena::new(&mut buffer);
+
+let mut decoder = DecoderBuilder::<SquareGrid>::new()
+    .dimensions(32, 32)
+    .build(&mut arena)
+    .expect("Failed to build decoder");
+
+let syndromes = vec![0u64; 16];
+let mut corrections = [EdgeCorrection::default(); 512];
+
+decoder.load_dense_syndromes(&syndromes);
+decoder.grow_clusters();
+let count = decoder.peel_forest(&mut corrections);
+decoder.reset_for_next_cycle();
+```
+
+### Python
+
+```bash
+pip install prav
+```
+
+```python
+import prav
+import numpy as np
+
+decoder = prav.Decoder(17, 17, topology="square")
+syndromes = np.zeros(8, dtype=np.uint64)
+syndromes[0] = 0b11  # Two adjacent defects
+corrections = decoder.decode(syndromes)
+```
+
 ## Core Properties
 
-prav is `no_std`, portable, heap-free, and built for performance.
-
-- **no_std**: No standard library dependency. Runs on bare metal.
+- **`no_std`**: No standard library dependency. Runs on bare metal.
 - **Portable**: Compiles to x86-64, ARM64, Cortex-R5, and WebAssembly.
-- **No heap**: Uses an arena bump allocator. No dynamic memory allocation at runtime.
+- **Zero heap**: Uses an arena bump allocator. No dynamic memory allocation at runtime.
 - **Performance**: SWAR bit operations, 64-byte cache-aligned blocks, Morton (Z-order) encoding for spatial locality.
 
-## Why this matters
-
-These properties enable deployment on embedded systems and FPGAs. Memory usage is fixed at initialization. There is no garbage collection and no allocation latency. Timing is deterministic. The decoder integrates with real-time quantum control systems that require sub-microsecond response times.
+These properties enable deployment on embedded systems and FPGAs. Memory usage is fixed at initialization. There is no garbage collection and no allocation latency. Timing is deterministic.
 
 ## Supported Topologies
 
 | Topology | Neighbors | Use Case |
 |----------|-----------|----------|
 | Square | 4 | Surface codes, toric codes |
-| Rectangular | 4 | Asymmetric surface codes |
 | Triangular | 6 | Color codes |
 | Honeycomb | 3 | Kitaev honeycomb model |
+| 3D | 6 | 3D topological codes |
+
+## Benchmarks
+
+### prav-core vs fusion-blossom (Rust)
+
+```bash
+cargo run --release -p prav-fb-bench
+```
+
+Compares Union Find (prav-core) against MWPM (fusion-blossom) on square surface codes. Reports latency percentiles and speedup across grid sizes and error rates.
+
+### prav vs PyMatching (Python)
+
+```bash
+cd prav-py-bench
+pip install -r requirements.txt
+python benchmark.py
+```
+
+Compares prav Python bindings against PyMatching. Tests both individual `decode()` and batch `decode_batch()` methods.
 
 ## Examples
 
-The `prav-core/examples/` directory contains educational examples demonstrating each grid topology:
-
-| Example | Grid | Description |
-|---------|------|-------------|
-| `tutorial_square.rs` | 4x4 square | Surface code basics with syndrome visualization |
-| `tutorial_rectangular.rs` | 5x3 rectangle | Asymmetric boundaries and distance calculations |
-| `tutorial_triangular.rs` | 4x4 triangular | Parity-dependent diagonal neighbors |
-| `tutorial_honeycomb.rs` | 4x4 honeycomb | Minimal 3-neighbor connectivity |
-
-Run an example:
+The `prav-core/examples/` directory contains tutorials for each grid topology:
 
 ```bash
 cargo run --example tutorial_square
+cargo run --example tutorial_triangular
+cargo run --example tutorial_honeycomb
 ```
 
-## Performance Measurement
-
-### Instruction-level profiling
+## Testing
 
 ```bash
-cargo bench
-```
-
-Uses iai-callgrind to count instructions. Measures individual decoder operations: reset, load, grow, peel.
-
-### Cluster growth timing
-
-```bash
-cargo run --example growth_bench --release
-```
-
-Runs 10,000 decoding cycles across all topologies. Reports average time per cycle at multiple error rates.
-
-### Stage breakdown
-
-```bash
-cargo run --example stage_bench --release
-```
-
-Shows time distribution across decoder stages: reset, load syndromes, grow clusters, peel corrections, compact.
-
-## Compilation Targets
-
-The `prav-core/xtask` tool builds and runs benchmarks on four targets:
-
-| Target | Description | Command |
-|--------|-------------|---------|
-| x86-64 | Native host | `cargo xtask bench --target x86-64` |
-| aarch64 | ARM64 Linux | `cargo xtask bench --target aarch64` |
-| armv7r | Bare-metal Cortex-R5 | `cargo xtask bench --target armv7r` |
-| wasm32 | WebAssembly | `cargo xtask bench --target wasm32` |
-
-Verify all targets compile:
-
-```bash
-cargo xtask check-all
-```
-
-## Testing Strategy
-
-### Unit tests
-
-```bash
+# Unit tests
 cargo test
-```
 
-In-source tests verify module-level correctness.
-
-### Property tests
-
-```bash
+# Property tests (random inputs, various grid sizes)
 cargo test --test '*prop*'
-```
 
-Uses proptest to generate random inputs and verify invariants hold across grid sizes (3x3 to 60x60) and defect counts (0 to 50).
-
-### Formal verification
-
-```bash
+# Formal verification (39 Kani proofs)
 cargo kani
 ```
 
-39 Kani proofs verify memory safety and arithmetic correctness. Proofs cover arena allocation bounds, Union Find determinism, Morton encoding round-trips, and peeling coordinate calculations.
+## Cross-Compilation
+
+```bash
+cargo xtask check-all  # Verify all targets compile
+cargo xtask bench --target wasm32  # WebAssembly
+cargo xtask bench --target aarch64  # ARM64
+cargo xtask bench --target armv7r  # Bare-metal Cortex-R5
+```
 
 ## License
 
-Apache 2.0
+Apache-2.0 OR MIT
 
 ---
 
