@@ -28,18 +28,38 @@ fn _prav(m: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Parameters
 /// ----------
 /// width : int
-///     Grid width in nodes.
+///     Grid width in nodes. Must be greater than 0.
 /// height : int
-///     Grid height in nodes.
+///     Grid height in nodes. Must be greater than 0.
 /// depth : int, optional
-///     Grid depth for 3D codes (default: 1).
+///     Grid depth for 3D codes (default: 1). Must be greater than 0.
 ///
 /// Returns
 /// -------
 /// int
 ///     Required buffer size in bytes.
+///
+/// Raises
+/// ------
+/// ValueError
+///     If width, height, or depth is 0.
 #[pyfunction]
 #[pyo3(signature = (width, height, depth=1))]
-fn required_buffer_size(width: usize, height: usize, depth: usize) -> usize {
-    prav_core::required_buffer_size(width, height, depth)
+fn required_buffer_size(width: usize, height: usize, depth: usize) -> PyResult<usize> {
+    if width == 0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "width must be greater than 0",
+        ));
+    }
+    if height == 0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "height must be greater than 0",
+        ));
+    }
+    if depth == 0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "depth must be greater than 0",
+        ));
+    }
+    Ok(prav_core::required_buffer_size(width, height, depth))
 }

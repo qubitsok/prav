@@ -15,5 +15,5 @@ Example
 
 from prav._prav import Decoder, TopologyType, required_buffer_size
 
-__version__ = "0.1.0"
+__version__ = "0.0.1"
 __all__ = ["Decoder", "TopologyType", "required_buffer_size"]

@@ -1,11 +1,11 @@
 //! Main Decoder class for Python.
 
 use numpy::{PyArray1, PyReadonlyArray1};
-use pyo3::prelude::*;
 use prav_core::{
-    Arena, DecoderBuilder, DynDecoder, EdgeCorrection, Grid3D, HoneycombGrid, SquareGrid,
-    Topology, TriangularGrid,
+    Arena, DecoderBuilder, DynDecoder, EdgeCorrection, Grid3D, HoneycombGrid, SquareGrid, Topology,
+    TriangularGrid,
 };
+use pyo3::prelude::*;
 
 use crate::topology::TopologyType;
 
@@ -89,7 +89,7 @@ impl<T: Topology> DecoderState<T> {
 
             let mut arena = Arena::new(buffer_ref);
 
-            let decoder = if depth > 1 {
+            if depth > 1 {
                 DecoderBuilder::<T>::new()
                     .dimensions_3d(width, height, depth)
                     .build(&mut arena)
@@ -99,9 +99,7 @@ impl<T: Topology> DecoderState<T> {
                     .dimensions(width, height)
                     .build(&mut arena)
                     .expect("Failed to build decoder")
-            };
-
-            decoder
+            }
         };
 
         Self {
@@ -130,21 +128,43 @@ impl Decoder {
     /// Parameters
     /// ----------
     /// width : int
-    ///     Grid width in nodes.
+    ///     Grid width in nodes. Must be greater than 0.
     /// height : int
-    ///     Grid height in nodes.
+    ///     Grid height in nodes. Must be greater than 0.
     /// topology : str, optional
     ///     Grid topology: 'square' (default), 'triangular', 'honeycomb', or '3d'.
     /// depth : int, optional
-    ///     Grid depth for 3D codes (default: 1).
+    ///     Grid depth for 3D codes (default: 1). Must be greater than 0.
     ///
     /// Returns
     /// -------
     /// Decoder
     ///     A new decoder instance.
+    ///
+    /// Raises
+    /// ------
+    /// ValueError
+    ///     If width, height, or depth is 0, or if topology is invalid.
     #[new]
     #[pyo3(signature = (width, height, topology="square", depth=1))]
     fn new(width: usize, height: usize, topology: &str, depth: usize) -> PyResult<Self> {
+        // Input validation
+        if width == 0 {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "width must be greater than 0",
+            ));
+        }
+        if height == 0 {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "height must be greater than 0",
+            ));
+        }
+        if depth == 0 {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "depth must be greater than 0",
+            ));
+        }
+
         let topo = TopologyType::new(topology)?;
 
         let inner = match topo {
