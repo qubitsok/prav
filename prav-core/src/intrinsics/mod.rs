@@ -32,4 +32,7 @@ pub use morton::{
 };
 
 // Syndrome spreading
-pub use spread::{spread_syndrome_8x8, spread_syndrome_linear, spread_syndrome_masked};
+pub use spread::{
+    spread_syndrome_3d, spread_syndrome_3d_masked, spread_syndrome_8x8, spread_syndrome_linear,
+    spread_syndrome_masked,
+};

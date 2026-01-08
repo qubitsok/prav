@@ -179,6 +179,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
 
         let stride_z = dim_pow2 * dim_pow2;
         let blk_stride_y = stride_y / 64;
+        let blk_stride_z = stride_z / 64;
         let shift_y = stride_y.trailing_zeros();
         let shift_z = stride_z.trailing_zeros();
 
@@ -211,6 +212,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
             stride_y,
             stride_z,
             blk_stride_y,
+            blk_stride_z,
             shift_y,
             shift_z,
             row_end_mask,

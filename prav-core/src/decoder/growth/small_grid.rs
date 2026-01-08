@@ -145,66 +145,74 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
             // Intermediate write removed - will be handled by single writeback
         }
 
-        // Calculate spread (horizontal)
-        let mut spread_boundary = if STRIDE_Y == 32 {
-            crate::intrinsics::spread_syndrome_masked(
+        // Calculate spread (horizontal + vertical within XY-plane block)
+        // Note: Intra-block spreading is 2D since blocks are XY-planes.
+        // Z-direction connectivity is handled by inter-block spreading.
+        let spread_boundary = if STRIDE_Y == 32 {
+            // STRIDE_Y=32 fast path: hardcoded masks
+            let mut spread = crate::intrinsics::spread_syndrome_masked(
                 boundary,
                 effective_mask,
                 0x8000000080000000,
                 0x0000000100000001,
-            )
+            );
+            // Intra-block vertical spread (single step for STRIDE_Y=32)
+            let mask = effective_mask;
+            {
+                let up = (spread << 32) & mask;
+                let down = (spread >> 32) & mask;
+                spread |= up | down;
+            }
+            spread
         } else {
-            crate::intrinsics::spread_syndrome_masked(
+            // Generic path with vertical spreading
+            let mut spread = crate::intrinsics::spread_syndrome_masked(
                 boundary,
                 effective_mask,
                 self.row_end_mask,
                 self.row_start_mask,
-            )
+            );
+            // Intra-block vertical spread (logarithmic)
+            if STRIDE_Y < 64 {
+                let mask = effective_mask;
+                {
+                    let up = (spread << STRIDE_Y) & mask;
+                    let down = (spread >> STRIDE_Y) & mask;
+                    spread |= up | down;
+                }
+                let shift_2 = STRIDE_Y * 2;
+                if shift_2 < 64 {
+                    let up = (spread << shift_2) & mask;
+                    let down = (spread >> shift_2) & mask;
+                    spread |= up | down;
+                }
+                let shift_4 = STRIDE_Y * 4;
+                if shift_4 < 64 {
+                    let up = (spread << shift_4) & mask;
+                    let down = (spread >> shift_4) & mask;
+                    spread |= up | down;
+                }
+                let shift_8 = STRIDE_Y * 8;
+                if shift_8 < 64 {
+                    let up = (spread << shift_8) & mask;
+                    let down = (spread >> shift_8) & mask;
+                    spread |= up | down;
+                }
+                let shift_16 = STRIDE_Y * 16;
+                if shift_16 < 64 {
+                    let up = (spread << shift_16) & mask;
+                    let down = (spread >> shift_16) & mask;
+                    spread |= up | down;
+                }
+                let shift_32 = STRIDE_Y * 32;
+                if shift_32 < 64 {
+                    let up = (spread << shift_32) & mask;
+                    let down = (spread >> shift_32) & mask;
+                    spread |= up | down;
+                }
+            }
+            spread
         };
-
-        // Intra-block vertical spread (logarithmic)
-        if STRIDE_Y < 64 {
-            let mask = effective_mask;
-            let mut current = spread_boundary;
-
-            {
-                let up = (current << STRIDE_Y) & mask;
-                let down = (current >> STRIDE_Y) & mask;
-                current |= up | down;
-            }
-            let shift_2 = STRIDE_Y * 2;
-            if shift_2 < 64 {
-                let up = (current << shift_2) & mask;
-                let down = (current >> shift_2) & mask;
-                current |= up | down;
-            }
-            let shift_4 = STRIDE_Y * 4;
-            if shift_4 < 64 {
-                let up = (current << shift_4) & mask;
-                let down = (current >> shift_4) & mask;
-                current |= up | down;
-            }
-            let shift_8 = STRIDE_Y * 8;
-            if shift_8 < 64 {
-                let up = (current << shift_8) & mask;
-                let down = (current >> shift_8) & mask;
-                current |= up | down;
-            }
-            let shift_16 = STRIDE_Y * 16;
-            if shift_16 < 64 {
-                let up = (current << shift_16) & mask;
-                let down = (current >> shift_16) & mask;
-                current |= up | down;
-            }
-            let shift_32 = STRIDE_Y * 32;
-            if shift_32 < 64 {
-                let up = (current << shift_32) & mask;
-                let down = (current >> shift_32) & mask;
-                current |= up | down;
-            }
-
-            spread_boundary = current;
-        }
 
         // Direct parent assignment for new nodes (no union needed!)
         let newly_occupied = spread_boundary & !occupied;
@@ -516,6 +524,166 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
             }
         }
 
+        // ============== Z-DIRECTION NEIGHBOR PROCESSING (3D only) ==============
+        // Since blocks are XY-planes, Z-neighbors are at the SAME position
+        // within adjacent blocks (no position mapping needed).
+        if self.graph.depth > 1 {
+            let blk_stride_z = self.graph.blk_stride_z;
+
+            // Z-up neighbor (blk_idx - blk_stride_z)
+            // All spread_boundary positions have Z-neighbors in the block above
+            if blk_idx >= blk_stride_z {
+                let blk_z_up = blk_idx - blk_stride_z;
+                let (valid_z_up, occupied_z_up, effective_z_up, r_z_up_val) = {
+                    let b = self.blocks_state.get_unchecked(blk_z_up);
+                    (b.valid_mask, b.occupied, b.effective_mask, b.root)
+                };
+
+                // Z-neighbors are at the same position within the adjacent block
+                let spread_to_z_up = spread_boundary;
+
+                // Boundary connection check
+                let boundary_connect_mask = spread_to_z_up & !valid_z_up;
+                if boundary_connect_mask != 0 {
+                    if self.union_roots(canonical_root, boundary_node) {
+                        expanded = true;
+                        if canonical_root < boundary_node {
+                            canonical_root = boundary_node;
+                        }
+                    }
+                }
+
+                if valid_z_up != 0 {
+                    let grow_z_up = spread_to_z_up & !occupied_z_up & effective_z_up;
+                    let merge_z_up = spread_to_z_up & occupied_z_up;
+
+                    if r_z_up_val != u32::MAX {
+                        if r_z_up_val == canonical_root {
+                            if grow_z_up != 0 {
+                                self.fast_grow_block::<SILENT>(blk_z_up, grow_z_up);
+                                expanded = true;
+                            }
+                        } else {
+                            let neighbor_root = {
+                                let p = *self.parents.get_unchecked(r_z_up_val as usize);
+                                if p == r_z_up_val {
+                                    r_z_up_val
+                                } else {
+                                    self.find(r_z_up_val)
+                                }
+                            };
+                            if neighbor_root == canonical_root {
+                                if grow_z_up != 0 {
+                                    self.fast_grow_block::<SILENT>(blk_z_up, grow_z_up);
+                                    expanded = true;
+                                }
+                            } else {
+                                if (merge_z_up != 0 || grow_z_up != 0)
+                                    && self.union_roots(canonical_root, neighbor_root)
+                                {
+                                    expanded = true;
+                                    if canonical_root < neighbor_root {
+                                        canonical_root = neighbor_root;
+                                    }
+                                }
+                                if grow_z_up != 0 {
+                                    self.fast_grow_block::<SILENT>(blk_z_up, grow_z_up);
+                                    expanded = true;
+                                }
+                            }
+                        }
+                    } else {
+                        if grow_z_up != 0 {
+                            self.fast_grow_block::<SILENT>(blk_z_up, grow_z_up);
+                            expanded = true;
+                        }
+                        if merge_z_up != 0 {
+                            if self.merge_mono(merge_z_up, blk_z_up * 64, canonical_root) {
+                                expanded = true;
+                            }
+                            canonical_root = self.find(canonical_root);
+                        }
+                    }
+                }
+            }
+
+            // Z-down neighbor (blk_idx + blk_stride_z)
+            if blk_idx + blk_stride_z < self.blocks_state.len() {
+                let blk_z_down = blk_idx + blk_stride_z;
+                let (valid_z_down, occupied_z_down, effective_z_down, r_z_down_val) = {
+                    let b = self.blocks_state.get_unchecked(blk_z_down);
+                    (b.valid_mask, b.occupied, b.effective_mask, b.root)
+                };
+
+                // Z-neighbors are at the same position within the adjacent block
+                let spread_to_z_down = spread_boundary;
+
+                // Boundary connection check
+                let boundary_connect_mask = spread_to_z_down & !valid_z_down;
+                if boundary_connect_mask != 0 {
+                    if self.union_roots(canonical_root, boundary_node) {
+                        expanded = true;
+                        if canonical_root < boundary_node {
+                            canonical_root = boundary_node;
+                        }
+                    }
+                }
+
+                if valid_z_down != 0 {
+                    let grow_z_down = spread_to_z_down & !occupied_z_down & effective_z_down;
+                    let merge_z_down = spread_to_z_down & occupied_z_down;
+
+                    if r_z_down_val != u32::MAX {
+                        if r_z_down_val == canonical_root {
+                            if grow_z_down != 0 {
+                                self.fast_grow_block::<SILENT>(blk_z_down, grow_z_down);
+                                expanded = true;
+                            }
+                        } else {
+                            let neighbor_root = {
+                                let p = *self.parents.get_unchecked(r_z_down_val as usize);
+                                if p == r_z_down_val {
+                                    r_z_down_val
+                                } else {
+                                    self.find(r_z_down_val)
+                                }
+                            };
+                            if neighbor_root == canonical_root {
+                                if grow_z_down != 0 {
+                                    self.fast_grow_block::<SILENT>(blk_z_down, grow_z_down);
+                                    expanded = true;
+                                }
+                            } else {
+                                if (merge_z_down != 0 || grow_z_down != 0)
+                                    && self.union_roots(canonical_root, neighbor_root)
+                                {
+                                    expanded = true;
+                                    if canonical_root < neighbor_root {
+                                        canonical_root = neighbor_root;
+                                    }
+                                }
+                                if grow_z_down != 0 {
+                                    self.fast_grow_block::<SILENT>(blk_z_down, grow_z_down);
+                                    expanded = true;
+                                }
+                            }
+                        }
+                    } else {
+                        if grow_z_down != 0 {
+                            self.fast_grow_block::<SILENT>(blk_z_down, grow_z_down);
+                            expanded = true;
+                        }
+                        if merge_z_down != 0 {
+                            if self.merge_mono(merge_z_down, blk_z_down * 64, canonical_root) {
+                                expanded = true;
+                            }
+                            canonical_root = self.find(canonical_root);
+                        }
+                    }
+                }
+            }
+        }
+
         // Clean up boundary
         boundary &= !spread_boundary;
 
@@ -580,68 +748,77 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
         let effective_mask = block_state_ptr.effective_mask;
         let valid_mask = block_state_ptr.valid_mask;
 
-        // Calculate spread (horizontal)
-        let mut spread_boundary = if STRIDE_Y == 32 {
-            crate::intrinsics::spread_syndrome_masked(
+        // Calculate spread (horizontal + vertical within XY-plane block)
+        // Note: Intra-block spreading is 2D since blocks are XY-planes.
+        // Z-direction connectivity is handled by inter-block spreading.
+        let spread_boundary = if STRIDE_Y == 32 {
+            // STRIDE_Y=32 fast path: hardcoded masks
+            let mut spread = crate::intrinsics::spread_syndrome_masked(
                 boundary,
                 effective_mask,
                 0x8000000080000000,
                 0x0000000100000001,
-            )
+            );
+            // Intra-block vertical spread (single step for STRIDE_Y=32)
+            let mask = effective_mask;
+            {
+                let up = (spread << 32) & mask;
+                let down = (spread >> 32) & mask;
+                spread |= up | down;
+            }
+            spread
         } else {
-            crate::intrinsics::spread_syndrome_masked(
+            // Generic path with vertical spreading
+            let mut spread = crate::intrinsics::spread_syndrome_masked(
                 boundary,
                 effective_mask,
                 self.row_end_mask,
                 self.row_start_mask,
-            )
+            );
+            // Intra-block vertical spread (logarithmic)
+            if STRIDE_Y < 64 {
+                let mask = effective_mask;
+                {
+                    let up = (spread << STRIDE_Y) & mask;
+                    let down = (spread >> STRIDE_Y) & mask;
+                    spread |= up | down;
+                }
+                let shift_2 = STRIDE_Y * 2;
+                if shift_2 < 64 {
+                    let up = (spread << shift_2) & mask;
+                    let down = (spread >> shift_2) & mask;
+                    spread |= up | down;
+                }
+                let shift_4 = STRIDE_Y * 4;
+                if shift_4 < 64 {
+                    let up = (spread << shift_4) & mask;
+                    let down = (spread >> shift_4) & mask;
+                    spread |= up | down;
+                }
+                let shift_8 = STRIDE_Y * 8;
+                if shift_8 < 64 {
+                    let up = (spread << shift_8) & mask;
+                    let down = (spread >> shift_8) & mask;
+                    spread |= up | down;
+                }
+                let shift_16 = STRIDE_Y * 16;
+                if shift_16 < 64 {
+                    let up = (spread << shift_16) & mask;
+                    let down = (spread >> shift_16) & mask;
+                    spread |= up | down;
+                }
+                let shift_32 = STRIDE_Y * 32;
+                if shift_32 < 64 {
+                    let up = (spread << shift_32) & mask;
+                    let down = (spread >> shift_32) & mask;
+                    spread |= up | down;
+                }
+            }
+            spread
         };
 
-        // Intra-block vertical spread (logarithmic)
-        if STRIDE_Y < 64 {
-            let mask = effective_mask;
-            let mut current = spread_boundary;
-
-            {
-                let up = (current << STRIDE_Y) & mask;
-                let down = (current >> STRIDE_Y) & mask;
-                current |= up | down;
-            }
-            let shift_2 = STRIDE_Y * 2;
-            if shift_2 < 64 {
-                let up = (current << shift_2) & mask;
-                let down = (current >> shift_2) & mask;
-                current |= up | down;
-            }
-            let shift_4 = STRIDE_Y * 4;
-            if shift_4 < 64 {
-                let up = (current << shift_4) & mask;
-                let down = (current >> shift_4) & mask;
-                current |= up | down;
-            }
-            let shift_8 = STRIDE_Y * 8;
-            if shift_8 < 64 {
-                let up = (current << shift_8) & mask;
-                let down = (current >> shift_8) & mask;
-                current |= up | down;
-            }
-            let shift_16 = STRIDE_Y * 16;
-            if shift_16 < 64 {
-                let up = (current << shift_16) & mask;
-                let down = (current >> shift_16) & mask;
-                current |= up | down;
-            }
-            let shift_32 = STRIDE_Y * 32;
-            if shift_32 < 64 {
-                let up = (current << shift_32) & mask;
-                let down = (current >> shift_32) & mask;
-                current |= up | down;
-            }
-
-            spread_boundary = current;
-        }
-
-        // Intra-block vertical unions (polychromatic)
+        // Intra-block unions (polychromatic) - 2D XY-plane within block
+        // Vertical pairs (Y-direction)
         if STRIDE_Y < 64 {
             let vertical_pairs = spread_boundary & (spread_boundary >> STRIDE_Y);
             if vertical_pairs != 0
@@ -650,8 +827,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
                 expanded = true;
             }
         }
-
-        // Horizontal unions
+        // Horizontal pairs (X-direction)
         let horizontal = (spread_boundary & (spread_boundary << 1)) & !self.row_start_mask;
         if horizontal != 0
             && self.merge_shifted(horizontal, base_global, -1, base_global)

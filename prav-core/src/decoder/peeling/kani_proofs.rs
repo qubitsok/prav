@@ -33,6 +33,7 @@ fn verify_emit_linear_bounds() {
         stride_y: STRIDE_Y,
         stride_z: STRIDE_Y * HEIGHT,
         blk_stride_y: 1, // simplified
+        blk_stride_z: 0, // Not used for 2D
         shift_y: 2, // log2(4)
         shift_z: 4, // log2(16)
         row_end_mask: 0,
@@ -149,6 +150,7 @@ fn verify_reconstruct_corrections_bounds() {
         stride_y: STRIDE_Y,
         stride_z: STRIDE_Y * HEIGHT,
         blk_stride_y: 1,
+        blk_stride_z: 0, // Not used for 2D
         shift_y: 2,
         shift_z: 4,
         row_end_mask: 0,

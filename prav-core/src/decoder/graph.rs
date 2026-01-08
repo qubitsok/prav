@@ -14,8 +14,8 @@
 /// # Memory Layout
 ///
 /// Nodes are organized in 64-node blocks using Morton (Z-order) encoding.
-/// Within each block, nodes are arranged as an 8x8 grid. Blocks themselves
-/// are arranged in row-major order.
+/// Within each block, nodes are arranged as an 8x8 grid (2D) or 4x4x4 cube (3D).
+/// Blocks themselves are arranged in row-major order.
 ///
 /// ```text
 /// Grid Layout (4x4 blocks = 32x32 nodes):
@@ -43,8 +43,10 @@ pub struct StaticGraph {
     pub stride_y: usize,
     /// Stride to move one position in Z direction (typically equals width * height).
     pub stride_z: usize,
-    /// Number of blocks per row of blocks.
+    /// Number of blocks per row of blocks (Y direction).
     pub blk_stride_y: usize,
+    /// Number of blocks per Z layer (for 3D grids).
+    pub blk_stride_z: usize,
     /// Log2 of stride_y for fast division via bit shift.
     pub shift_y: u32,
     /// Log2 of stride_z for fast division via bit shift.

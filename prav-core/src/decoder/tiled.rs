@@ -182,6 +182,7 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
             stride_y: 32,
             stride_z: 1024,
             blk_stride_y: 0, // Not used for Stride 32
+            blk_stride_z: 0, // Not used for 2D tiles
             shift_y: 5,
             shift_z: 10,
             row_end_mask: 0x8000000080000000,
