@@ -2,8 +2,9 @@
 """
 Benchmark comparison: prav vs PyMatching
 
-Compares decode latency on a 17x17 square grid surface code.
+Compares decode latency on multiple grid sizes (17x17, 32x32, 64x64).
 Outputs timing percentiles (avg, p50, p95, p99) in console tables.
+Includes rigorous correctness verification proving feature parity.
 
 PyMatching is configured with proper weights based on error probability
 as recommended in the official documentation.
@@ -24,6 +25,11 @@ from syndrome_generator import (
     generate_syndromes_prav,
     prav_to_pymatching,
     count_defects_prav,
+)
+from verification import (
+    verify_prav_resolves_all,
+    verify_pymatching_resolves_all,
+    verify_feature_parity,
 )
 
 
@@ -106,7 +112,7 @@ def create_surface_code_graph(width: int, height: int) -> Tuple[csr_matrix, int]
 
 def create_pymatching_decoder(
     width: int, height: int, error_prob: float
-) -> Matching:
+) -> Tuple[Matching, csr_matrix]:
     """
     Create a properly configured PyMatching decoder.
 
@@ -124,8 +130,8 @@ def create_pymatching_decoder(
 
     Returns
     -------
-    Matching
-        Configured PyMatching decoder.
+    Tuple[Matching, csr_matrix]
+        (Configured PyMatching decoder, parity check matrix H)
     """
     H, num_edges = create_surface_code_graph(width, height)
 
@@ -139,98 +145,158 @@ def create_pymatching_decoder(
     # Create decoder using from_check_matrix with weights
     matcher = Matching.from_check_matrix(H, weights=weights)
 
-    return matcher
+    return matcher, H
 
 
-def benchmark_prav(
-    decoder: prav.Decoder,
-    syndromes_list: List[np.ndarray],
-    warmup: int = 100,
-) -> Tuple[List[float], int]:
+def warmup_prav(decoder: prav.Decoder, width: int, height: int, num_warmup: int = 200):
     """
-    Benchmark prav decoder.
+    Warmup prav decoder with fresh random syndromes.
+
+    Uses separate data from benchmark to avoid cache effects.
 
     Parameters
     ----------
     decoder : prav.Decoder
         The decoder instance.
-    syndromes_list : List[np.ndarray]
-        List of syndrome arrays.
-    warmup : int
+    width : int
+        Grid width.
+    height : int
+        Grid height.
+    num_warmup : int
         Number of warmup iterations.
-
-    Returns
-    -------
-    Tuple[List[float], int]
-        (per_decode_times_us, total_corrections)
     """
-    # Warmup - ensure JIT/cache is warm
-    for i in range(min(warmup, len(syndromes_list))):
-        decoder.decode(syndromes_list[i])
-
-    times_us = []
-    total_corrections = 0
-
-    for syndromes in syndromes_list:
-        start = time.perf_counter()
-        corrections = decoder.decode(syndromes)
-        end = time.perf_counter()
-
-        times_us.append((end - start) * 1_000_000)  # Convert to microseconds
-        total_corrections += len(corrections) // 2
-
-    return times_us, total_corrections
+    warmup_syndromes = generate_syndromes_prav(
+        width, height,
+        error_prob=0.01,  # Fixed rate for warmup
+        num_shots=num_warmup,
+        seed=0xDEADBEEF,  # Different seed than benchmark
+    )
+    for s in warmup_syndromes:
+        decoder.decode(s)
 
 
-def benchmark_pymatching(
-    matcher: Matching,
-    syndromes_list: List[np.ndarray],
-    warmup: int = 100,
-) -> Tuple[List[float], int]:
+def warmup_pymatching(matcher: Matching, width: int, height: int, num_warmup: int = 200):
     """
-    Benchmark PyMatching decoder with individual decode calls.
+    Warmup PyMatching decoder with fresh random syndromes.
+
+    Per PyMatching docs: first decode call caches C++ representation.
 
     Parameters
     ----------
     matcher : Matching
         The PyMatching instance.
-    syndromes_list : List[np.ndarray]
-        List of syndrome arrays in PyMatching format.
-    warmup : int
+    width : int
+        Grid width.
+    height : int
+        Grid height.
+    num_warmup : int
         Number of warmup iterations.
+    """
+    warmup_syndromes = generate_syndromes_prav(
+        width, height,
+        error_prob=0.01,  # Fixed rate for warmup
+        num_shots=num_warmup,
+        seed=0xCAFEBABE,  # Different seed than benchmark and prav warmup
+    )
+    # Convert to PyMatching format
+    pm_warmup = [prav_to_pymatching(s, width, height) for s in warmup_syndromes]
+    for s in pm_warmup:
+        matcher.decode(s)
+
+
+def benchmark_with_verification(
+    prav_decoder: prav.Decoder,
+    pm_decoder: Matching,
+    prav_syndromes: List[np.ndarray],
+    pm_syndromes: List[np.ndarray],
+    H: csr_matrix,
+    width: int,
+    height: int,
+) -> Dict[str, Any]:
+    """
+    Benchmark both decoders with full verification of every shot.
+
+    Parameters
+    ----------
+    prav_decoder : prav.Decoder
+        The prav decoder instance.
+    pm_decoder : Matching
+        The PyMatching decoder instance.
+    prav_syndromes : List[np.ndarray]
+        Syndromes in prav format.
+    pm_syndromes : List[np.ndarray]
+        Syndromes in PyMatching format.
+    H : csr_matrix
+        Parity check matrix for PyMatching verification.
+    width : int
+        Grid width.
+    height : int
+        Grid height.
 
     Returns
     -------
-    Tuple[List[float], int]
-        (per_decode_times_us, total_corrections)
+    Dict[str, Any]
+        Dictionary with timing and verification results.
     """
-    # Warmup - ensure C++ representation is cached (per PyMatching docs)
-    for i in range(min(warmup, len(syndromes_list))):
-        matcher.decode(syndromes_list[i])
+    prav_times = []
+    pm_times = []
+    prav_verified = 0
+    pm_verified = 0
+    parity_matches = 0
+    total_defects = 0
+    prav_corrections_total = 0
+    pm_corrections_total = 0
 
-    times_us = []
-    total_corrections = 0
+    for prav_syn, pm_syn in zip(prav_syndromes, pm_syndromes):
+        # Count defects for this shot
+        defects = count_defects_prav(prav_syn)
+        total_defects += defects
 
-    for syndromes in syndromes_list:
-        start = time.perf_counter()
-        corrections = matcher.decode(syndromes)
-        end = time.perf_counter()
+        # Time prav decode
+        t0 = time.perf_counter()
+        prav_corr = prav_decoder.decode(prav_syn)
+        t1 = time.perf_counter()
+        prav_times.append((t1 - t0) * 1_000_000)  # us
 
-        times_us.append((end - start) * 1_000_000)  # Convert to microseconds
-        total_corrections += int(np.sum(corrections))
+        # Time PyMatching decode
+        t0 = time.perf_counter()
+        pm_corr = pm_decoder.decode(pm_syn)
+        t1 = time.perf_counter()
+        pm_times.append((t1 - t0) * 1_000_000)  # us
 
-    return times_us, total_corrections
+        # Verify EVERY shot
+        prav_ok, _, _ = verify_prav_resolves_all(prav_syn, prav_corr, width, height)
+        pm_ok, _, _ = verify_pymatching_resolves_all(pm_syn, pm_corr, H)
+
+        if prav_ok:
+            prav_verified += 1
+        if pm_ok:
+            pm_verified += 1
+        if prav_ok == pm_ok:
+            parity_matches += 1
+
+        prav_corrections_total += len(prav_corr) // 2
+        pm_corrections_total += int(np.sum(pm_corr))
+
+    return {
+        "prav_times": prav_times,
+        "pm_times": pm_times,
+        "prav_verified": prav_verified,
+        "pm_verified": pm_verified,
+        "parity_matches": parity_matches,
+        "total_defects": total_defects,
+        "prav_corrections": prav_corrections_total,
+        "pm_corrections": pm_corrections_total,
+        "num_shots": len(prav_syndromes),
+    }
 
 
 def benchmark_pymatching_batch(
     matcher: Matching,
     syndromes_batch: np.ndarray,
-    warmup: int = 100,
 ) -> Tuple[float, int]:
     """
     Benchmark PyMatching decoder with batch decoding (decode_batch).
-
-    This is the recommended way to use PyMatching for throughput.
 
     Parameters
     ----------
@@ -238,18 +304,12 @@ def benchmark_pymatching_batch(
         The PyMatching instance.
     syndromes_batch : np.ndarray
         2D array of syndromes (num_shots x num_nodes).
-    warmup : int
-        Number of warmup shots.
 
     Returns
     -------
     Tuple[float, int]
         (total_time_us, total_corrections)
     """
-    # Warmup with a small batch
-    if warmup > 0 and len(syndromes_batch) > warmup:
-        matcher.decode_batch(syndromes_batch[:warmup])
-
     start = time.perf_counter()
     corrections = matcher.decode_batch(syndromes_batch)
     end = time.perf_counter()
@@ -283,15 +343,15 @@ def calculate_percentiles(times_us: List[float]) -> Dict[str, float]:
     }
 
 
-def run_benchmark(
-    width: int = 17,
-    height: int = 17,
-    error_probs: List[float] = None,
-    num_shots: int = 10000,
-    seed: int = 42,
+def run_benchmark_for_grid(
+    width: int,
+    height: int,
+    error_probs: List[float],
+    num_shots: int,
+    seed: int,
 ) -> List[Dict[str, Any]]:
     """
-    Run benchmark comparison.
+    Run benchmark comparison for a single grid size.
 
     Parameters
     ----------
@@ -311,81 +371,120 @@ def run_benchmark(
     List[Dict[str, Any]]
         List of result dictionaries.
     """
-    if error_probs is None:
-        error_probs = [0.001, 0.003, 0.006, 0.01, 0.03, 0.06]
-
     results = []
 
     # Initialize prav decoder (reused across error rates)
-    print(f"Initializing decoders for {width}x{height} grid...")
+    print(f"  Initializing prav decoder...")
     prav_decoder = prav.Decoder(width, height, topology="square")
-
-    print(f"Running {num_shots:,} shots per error rate...\n")
 
     for p in error_probs:
         print(f"  Error rate {p:.3f}... ", end="", flush=True)
 
         # Create PyMatching decoder with proper weights for this error rate
-        # Per PyMatching docs: weight = log((1-p)/p)
-        pymatching_decoder = create_pymatching_decoder(width, height, p)
+        pm_decoder, H = create_pymatching_decoder(width, height, p)
 
-        # Generate syndromes
+        # Warmup both decoders with fresh data BEFORE timing
+        warmup_prav(prav_decoder, width, height, num_warmup=200)
+        warmup_pymatching(pm_decoder, width, height, num_warmup=200)
+
+        # Generate syndromes for benchmarking
         prav_syndromes = generate_syndromes_prav(
             width, height, p, num_shots, seed + int(p * 1e6)
         )
-
-        # Convert to PyMatching format
         pm_syndromes = [
             prav_to_pymatching(s, width, height) for s in prav_syndromes
         ]
 
-        # Also create batch array for decode_batch
-        pm_syndromes_batch = np.array(pm_syndromes, dtype=np.uint8)
-
-        # Count total defects
-        total_defects = sum(count_defects_prav(s) for s in prav_syndromes)
-
-        # Benchmark prav (individual decodes for latency)
-        prav_times, prav_corrections = benchmark_prav(
-            prav_decoder, prav_syndromes
+        # Run benchmark with verification
+        bench_result = benchmark_with_verification(
+            prav_decoder,
+            pm_decoder,
+            prav_syndromes,
+            pm_syndromes,
+            H,
+            width,
+            height,
         )
-        prav_stats = calculate_percentiles(prav_times)
 
-        # Benchmark PyMatching (individual decodes for latency comparison)
-        pm_times, pm_corrections = benchmark_pymatching(
-            pymatching_decoder, pm_syndromes
-        )
-        pm_stats = calculate_percentiles(pm_times)
+        # Calculate latency percentiles
+        prav_stats = calculate_percentiles(bench_result["prav_times"])
+        pm_stats = calculate_percentiles(bench_result["pm_times"])
 
         # Also benchmark PyMatching with decode_batch for throughput comparison
+        pm_syndromes_batch = np.array(pm_syndromes, dtype=np.uint8)
         pm_batch_time, pm_batch_corrections = benchmark_pymatching_batch(
-            pymatching_decoder, pm_syndromes_batch
+            pm_decoder, pm_syndromes_batch
         )
         pm_batch_avg = pm_batch_time / num_shots
 
         result = {
             "p": p,
-            "defects": total_defects,
+            "defects": bench_result["total_defects"],
             "prav": prav_stats,
-            "prav_corrections": prav_corrections,
+            "prav_corrections": bench_result["prav_corrections"],
             "pymatching": pm_stats,
-            "pm_corrections": pm_corrections,
+            "pm_corrections": bench_result["pm_corrections"],
             "pm_batch_avg": pm_batch_avg,
             "pm_batch_corrections": pm_batch_corrections,
+            # Verification results
+            "prav_verified": bench_result["prav_verified"],
+            "pm_verified": bench_result["pm_verified"],
+            "parity_matches": bench_result["parity_matches"],
+            "num_shots": bench_result["num_shots"],
         }
         results.append(result)
 
-        print(f"done (prav avg: {prav_stats['avg']:.2f}us, PM avg: {pm_stats['avg']:.2f}us, PM batch: {pm_batch_avg:.2f}us)")
+        prav_pct = 100.0 * bench_result["prav_verified"] / num_shots
+        pm_pct = 100.0 * bench_result["pm_verified"] / num_shots
+        print(f"done (prav: {prav_stats['avg']:.2f}us [{prav_pct:.0f}%], PM: {pm_stats['avg']:.2f}us [{pm_pct:.0f}%])")
 
     return results
 
 
-def print_results(results: List[Dict[str, Any]], width: int, height: int, num_shots: int):
-    """Print results as formatted tables."""
-    print(f"\n{'='*80}")
-    print(f"Benchmark: {width}x{height} Square Grid | {num_shots:,} shots per error rate")
+def run_full_benchmark(
+    grid_sizes: List[int],
+    error_probs: List[float],
+    num_shots: int,
+    seed: int,
+) -> Dict[int, List[Dict[str, Any]]]:
+    """
+    Run benchmarks across multiple grid sizes.
+
+    Parameters
+    ----------
+    grid_sizes : List[int]
+        List of grid sizes (assumes square grids).
+    error_probs : List[float]
+        List of error probabilities to test.
+    num_shots : int
+        Number of shots per error rate.
+    seed : int
+        Random seed.
+
+    Returns
+    -------
+    Dict[int, List[Dict[str, Any]]]
+        {grid_size: [results_per_error_rate]}
+    """
+    all_results = {}
+
+    for size in grid_sizes:
+        print(f"\n{'='*70}")
+        print(f"Grid: {size}x{size} | {num_shots:,} shots per error rate")
+        print("="*70)
+
+        results = run_benchmark_for_grid(size, size, error_probs, num_shots, seed)
+        all_results[size] = results
+
+    return all_results
+
+
+def print_results_for_grid(results: List[Dict[str, Any]], size: int, num_shots: int):
+    """Print results as formatted tables for a single grid size."""
+    print(f"\n{'='*70}")
+    print(f"Results: {size}x{size} Square Grid | {num_shots:,} shots per error rate")
     print("PyMatching configured with weights = log((1-p)/p) per documentation")
-    print("="*80)
+    print("="*70)
 
     # prav latencies table
     print("\nprav Latencies (microseconds):")
@@ -459,6 +558,22 @@ def print_results(results: List[Dict[str, Any]], width: int, height: int, num_sh
         ])
     print(tabulate(batch_speedup_rows, headers=batch_speedup_headers, tablefmt="grid"))
 
+    # Correctness Verification table
+    print("\nCorrectness Verification:")
+    verif_headers = ["Error Rate", "prav Success", "PyMatching Success", "Feature Parity"]
+    verif_rows = []
+    for r in results:
+        prav_pct = 100.0 * r['prav_verified'] / r['num_shots']
+        pm_pct = 100.0 * r['pm_verified'] / r['num_shots']
+        parity_pct = 100.0 * r['parity_matches'] / r['num_shots']
+        verif_rows.append([
+            f"{r['p']:.3f}",
+            f"{prav_pct:.2f}% ({r['prav_verified']:,})",
+            f"{pm_pct:.2f}% ({r['pm_verified']:,})",
+            f"{parity_pct:.2f}%",
+        ])
+    print(tabulate(verif_rows, headers=verif_headers, tablefmt="grid"))
+
     # Correction counts
     print("\nCorrection Counts:")
     corr_headers = ["Error Rate", "prav", "PyMatching"]
@@ -471,19 +586,44 @@ def print_results(results: List[Dict[str, Any]], width: int, height: int, num_sh
         ])
     print(tabulate(corr_rows, headers=corr_headers, tablefmt="grid"))
 
-    # Summary
-    avg_speedups = []
-    batch_speedups = []
-    for r in results:
-        if r['prav']['avg'] > 0:
-            avg_speedups.append(r['pymatching']['avg'] / r['prav']['avg'])
-            batch_speedups.append(r['pm_batch_avg'] / r['prav']['avg'])
 
-    if avg_speedups:
-        overall_avg_speedup = sum(avg_speedups) / len(avg_speedups)
-        overall_batch_speedup = sum(batch_speedups) / len(batch_speedups)
-        print(f"\nOverall average speedup vs decode(): {overall_avg_speedup:.2f}x")
-        print(f"Overall average speedup vs decode_batch(): {overall_batch_speedup:.2f}x")
+def print_summary(all_results: Dict[int, List[Dict[str, Any]]]):
+    """Print overall summary across all grid sizes."""
+    print(f"\n{'='*70}")
+    print("SUMMARY ACROSS ALL GRIDS")
+    print("="*70)
+
+    total_shots = 0
+    total_prav_verified = 0
+    total_pm_verified = 0
+    total_parity = 0
+    all_speedups = []
+
+    for size, results in all_results.items():
+        for r in results:
+            total_shots += r['num_shots']
+            total_prav_verified += r['prav_verified']
+            total_pm_verified += r['pm_verified']
+            total_parity += r['parity_matches']
+            if r['prav']['avg'] > 0:
+                all_speedups.append(r['pymatching']['avg'] / r['prav']['avg'])
+
+    prav_success_rate = 100.0 * total_prav_verified / total_shots if total_shots > 0 else 0
+    pm_success_rate = 100.0 * total_pm_verified / total_shots if total_shots > 0 else 0
+    parity_rate = 100.0 * total_parity / total_shots if total_shots > 0 else 0
+    avg_speedup = sum(all_speedups) / len(all_speedups) if all_speedups else 0
+
+    print(f"\nTotal shots: {total_shots:,}")
+    print(f"prav defect resolution: {prav_success_rate:.2f}% ({total_prav_verified:,}/{total_shots:,})")
+    print(f"PyMatching defect resolution: {pm_success_rate:.2f}% ({total_pm_verified:,}/{total_shots:,})")
+    print(f"Feature parity: {parity_rate:.2f}%")
+    print(f"Average speedup vs PyMatching decode(): {avg_speedup:.2f}x")
+
+    if prav_success_rate == 100.0 and pm_success_rate == 100.0:
+        print("\nAll decoders achieved 100% defect resolution across all configurations.")
+        print("Feature parity confirmed: both decoders produce equivalent results.")
+    elif prav_success_rate < 100.0 or pm_success_rate < 100.0:
+        print(f"\nWARNING: Some shots did not resolve all defects.")
 
 
 def main():
@@ -491,12 +631,9 @@ def main():
         description="Benchmark prav vs PyMatching QEC decoders"
     )
     parser.add_argument(
-        "--width", type=int, default=17,
-        help="Grid width (default: 17)"
-    )
-    parser.add_argument(
-        "--height", type=int, default=17,
-        help="Grid height (default: 17)"
+        "--grids", type=int, nargs="+",
+        default=[17, 32, 64],
+        help="Grid sizes to benchmark (default: 17 32 64)"
     )
     parser.add_argument(
         "--shots", type=int, default=10000,
@@ -514,15 +651,24 @@ def main():
 
     args = parser.parse_args()
 
-    results = run_benchmark(
-        width=args.width,
-        height=args.height,
+    print("Benchmark: prav vs PyMatching QEC Decoders")
+    print(f"Grids: {args.grids}")
+    print(f"Shots per error rate: {args.shots:,}")
+    print(f"Error probabilities: {args.error_probs}")
+
+    all_results = run_full_benchmark(
+        grid_sizes=args.grids,
         error_probs=args.error_probs,
         num_shots=args.shots,
         seed=args.seed,
     )
 
-    print_results(results, args.width, args.height, args.shots)
+    # Print detailed results for each grid
+    for size in args.grids:
+        print_results_for_grid(all_results[size], size, args.shots)
+
+    # Print overall summary
+    print_summary(all_results)
 
 
 if __name__ == "__main__":

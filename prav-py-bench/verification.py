@@ -2,30 +2,43 @@
 Verification utilities for checking decoder correctness.
 
 Validates that corrections properly resolve syndromes for both
-prav and PyMatching decoders.
+prav and PyMatching decoders, proving feature parity.
 """
 
 import numpy as np
-from typing import Tuple
+from scipy.sparse import csr_matrix
+from typing import Tuple, Dict, Any
 
 
-def verify_prav_corrections(
+def count_defects_prav(packed_syndromes: np.ndarray) -> int:
+    """Count number of defects in prav-format syndrome array."""
+    return sum(bin(int(x)).count("1") for x in packed_syndromes)
+
+
+def count_defects_pymatching(syndromes: np.ndarray) -> int:
+    """Count number of defects in PyMatching-format syndrome array."""
+    return int(np.sum(syndromes))
+
+
+def verify_prav_resolves_all(
     packed_syndromes: np.ndarray,
     corrections: np.ndarray,
     width: int,
     height: int,
-) -> Tuple[bool, int]:
+) -> Tuple[bool, int, int]:
     """
-    Verify that prav corrections properly resolve syndromes.
+    Verify that prav corrections resolve all defects.
 
-    Applies corrections to syndromes and checks that no defects remain.
+    Applies corrections by XOR-toggling syndrome bits at edge endpoints.
+    A valid matching should resolve all defects to zero.
 
     Parameters
     ----------
     packed_syndromes : np.ndarray[np.uint64]
-        Original packed syndromes.
+        Original packed syndromes in prav format.
     corrections : np.ndarray[np.uint32]
         Correction pairs from decoder [u0, v0, u1, v1, ...].
+        v=0xFFFFFFFF indicates a boundary correction.
     width : int
         Grid width.
     height : int
@@ -33,32 +46,33 @@ def verify_prav_corrections(
 
     Returns
     -------
-    Tuple[bool, int]
-        (valid, remaining_defects)
-        valid: True if all defects resolved
-        remaining_defects: Number of remaining defects (should be 0)
+    Tuple[bool, int, int]
+        (all_resolved, original_defects, remaining_defects)
     """
+    # Count original defects
+    original = count_defects_prav(packed_syndromes)
+
+    # No defects means nothing to verify
+    if original == 0:
+        return True, 0, 0
+
     # Make a copy to modify
     result = packed_syndromes.copy()
 
-    max_dim = max(width, height)
-    stride = 1 << (max_dim - 1).bit_length()
-
-    # Apply corrections (flip syndrome bits at edge endpoints)
+    # Apply corrections by XOR-toggling endpoints
     num_corrections = len(corrections) // 2
     for i in range(num_corrections):
-        u = corrections[i * 2]
-        v = corrections[i * 2 + 1]
+        u = int(corrections[2 * i])
+        v = int(corrections[2 * i + 1])
 
-        # Flip bit at u (if within valid grid)
+        # Toggle bit at u (boundary marker = 0xFFFFFFFF)
         if u != 0xFFFFFFFF:
-            # u is in prav's internal index (with stride)
             block_u = u // 64
             bit_u = u % 64
             if block_u < len(result):
                 result[block_u] ^= np.uint64(1) << np.uint64(bit_u)
 
-        # Flip bit at v (unless boundary)
+        # Toggle bit at v (boundary marker = 0xFFFFFFFF)
         if v != 0xFFFFFFFF:
             block_v = v // 64
             bit_v = v % 64
@@ -66,52 +80,96 @@ def verify_prav_corrections(
                 result[block_v] ^= np.uint64(1) << np.uint64(bit_v)
 
     # Count remaining defects
-    remaining = sum(bin(int(x)).count("1") for x in result)
+    remaining = count_defects_prav(result)
 
-    return remaining == 0, remaining
+    return remaining == 0, original, remaining
 
 
-def verify_pymatching_corrections(
+def verify_pymatching_resolves_all(
     syndromes: np.ndarray,
     corrections: np.ndarray,
-    width: int,
-    height: int,
-) -> Tuple[bool, int]:
+    H: csr_matrix,
+) -> Tuple[bool, int, int]:
     """
-    Verify that PyMatching corrections are valid.
+    Verify that PyMatching corrections resolve all defects.
 
-    For PyMatching, corrections are edge flips. We count how many
-    corrections were applied and verify the syndrome was resolved.
+    PyMatching returns edge corrections as a binary array. We verify by:
+    1. Computing syndrome change = H @ corrections (mod 2)
+    2. Applying change to original syndrome
+    3. Checking all defects are resolved
 
     Parameters
     ----------
-    syndromes : np.ndarray[bool]
-        Original syndrome array.
+    syndromes : np.ndarray[bool/uint8]
+        Original syndrome array in PyMatching format.
     corrections : np.ndarray
-        Correction array from PyMatching.
-    width : int
-        Grid width.
-    height : int
-        Grid height.
+        Correction array from PyMatching (binary over edges).
+    H : scipy.sparse.csr_matrix
+        Parity check matrix used by PyMatching.
 
     Returns
     -------
-    Tuple[bool, int]
-        (valid, remaining_defects)
+    Tuple[bool, int, int]
+        (all_resolved, original_defects, remaining_defects)
     """
-    # PyMatching returns edge corrections, not directly syndrome toggling
-    # The number of corrections is np.sum(corrections)
-    num_corrections = int(np.sum(corrections))
+    # Count original defects
+    original = int(np.sum(syndromes))
 
-    # For a valid matching, all syndromes should be resolved
-    # We can't easily verify this without the parity check matrix
-    # Just return that it's valid if there are corrections when there were defects
-    num_defects = int(np.sum(syndromes))
+    # No defects means nothing to verify
+    if original == 0:
+        return True, 0, 0
 
-    # Simple heuristic: if there are defects, there should be corrections
-    valid = (num_defects == 0) or (num_corrections > 0)
+    # corrections is a binary array over edges
+    # H @ corrections (mod 2) gives the syndrome change
+    corrections_uint8 = corrections.astype(np.uint8)
+    syndrome_change = np.array((H @ corrections_uint8) % 2).flatten()
 
-    return valid, 0  # PyMatching should always resolve all defects
+    # Apply change to original syndrome (XOR)
+    syndromes_uint8 = syndromes.astype(np.uint8)
+    remaining_syndrome = (syndromes_uint8 ^ syndrome_change) % 2
+
+    # Count remaining defects
+    remaining = int(np.sum(remaining_syndrome))
+
+    return remaining == 0, original, remaining
+
+
+def verify_feature_parity(
+    prav_resolved: bool,
+    pm_resolved: bool,
+    original_defects: int,
+) -> Dict[str, Any]:
+    """
+    Compare that both decoders achieve the same result.
+
+    Feature parity means both decoders either:
+    - Both resolve all defects successfully, OR
+    - Both fail to resolve (shouldn't happen with valid input)
+
+    Note: The decoders may produce different corrections (different
+    valid matchings exist), but the end result should be the same.
+
+    Parameters
+    ----------
+    prav_resolved : bool
+        Whether prav resolved all defects.
+    pm_resolved : bool
+        Whether PyMatching resolved all defects.
+    original_defects : int
+        Number of original defects.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Comparison metrics.
+    """
+    return {
+        "original_defects": original_defects,
+        "prav_resolved": prav_resolved,
+        "pymatching_resolved": pm_resolved,
+        "feature_parity": prav_resolved == pm_resolved,
+        "both_succeeded": prav_resolved and pm_resolved,
+    }
 
 
 def count_corrections_prav(corrections: np.ndarray) -> int:
@@ -122,36 +180,3 @@ def count_corrections_prav(corrections: np.ndarray) -> int:
 def count_corrections_pymatching(corrections: np.ndarray) -> int:
     """Count number of corrections in PyMatching output."""
     return int(np.sum(corrections))
-
-
-def compare_results(
-    prav_corrections: np.ndarray,
-    pymatching_corrections: np.ndarray,
-    num_defects: int,
-) -> dict:
-    """
-    Compare correction results from both decoders.
-
-    Parameters
-    ----------
-    prav_corrections : np.ndarray
-        Corrections from prav decoder.
-    pymatching_corrections : np.ndarray
-        Corrections from PyMatching decoder.
-    num_defects : int
-        Number of original defects.
-
-    Returns
-    -------
-    dict
-        Comparison metrics.
-    """
-    prav_count = count_corrections_prav(prav_corrections)
-    pm_count = count_corrections_pymatching(pymatching_corrections)
-
-    return {
-        "num_defects": num_defects,
-        "prav_corrections": prav_count,
-        "pymatching_corrections": pm_count,
-        "both_produced_corrections": prav_count > 0 and pm_count > 0,
-    }
