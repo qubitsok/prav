@@ -4,6 +4,7 @@ members = [
     "prav-core/xtask",
     "prav-core/bench-suite",
     "prav-py",
+    "prav-fb-bench",
 ]
 resolver = "2"
 

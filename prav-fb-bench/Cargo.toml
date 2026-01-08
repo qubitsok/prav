@@ -1,0 +1,17 @@
+[package]
+name = "prav-fb-bench"
+version = "0.1.0"
+edition = "2024"
+description = "Benchmark comparison: prav-core vs fusion-blossom"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "prav-fb-bench"
+path = "src/main.rs"
+
+[dependencies]
+prav-core = { path = "../prav-core" }
+fusion-blossom = "0.2"
+rand = "0.8"
+rand_xoshiro = "0.6"
+clap = { version = "4", features = ["derive"] }
