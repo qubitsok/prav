@@ -1,0 +1,8 @@
+/prav-py/target/
+/target/
+/prav-core/target/
+.venv/
+venv/
+.idea/
+.env
+lcov.info

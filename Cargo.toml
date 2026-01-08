@@ -1,0 +1,21 @@
+[workspace]
+members = [
+    "prav-core",
+    "prav-core/xtask",
+    "prav-core/bench-suite",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+
+[profile.bench]
+inherits = "release"
+debug = true
+strip = false
+lto = false  # Optional, but helps Valgrind see symbols clearly

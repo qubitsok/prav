@@ -1,0 +1,7 @@
+[alias]
+xtask = "run --package xtask --bin xtask --"
+
+[target.thumbv7em-none-eabihf]
+rustflags = [
+  "-C", "link-arg=-Tlink.x",
+]

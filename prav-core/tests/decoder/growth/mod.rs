@@ -1,0 +1,10 @@
+mod growth_loop;
+mod optimization;
+mod optimized_32;
+mod small_grid;
+mod small_stride;
+mod small_stride_swar;
+mod stagnation;
+mod stride32;
+mod swar;
+mod unrolling;
