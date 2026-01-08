@@ -3,6 +3,7 @@ members = [
     "prav-core",
     "prav-core/xtask",
     "prav-core/bench-suite",
+    "prav-py",
 ]
 resolver = "2"
 
