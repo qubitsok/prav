@@ -4,6 +4,9 @@ Contact: qubits@qubitsok.com | [LinkedIn](https://www.linkedin.com/in/piotrlewan
 
 # prav
 
+[![Crates.io](https://img.shields.io/crates/v/prav-core.svg)](https://crates.io/crates/prav-core)
+[![Documentation](https://docs.rs/prav-core/badge.svg)](https://docs.rs/prav-core)
+
 Union Find decoder for Quantum Error Correction.
 
 ## What is this?

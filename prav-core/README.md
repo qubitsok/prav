@@ -1,5 +1,8 @@
 # prav-core
 
+[![Crates.io](https://img.shields.io/crates/v/prav-core.svg)](https://crates.io/crates/prav-core)
+[![Documentation](https://docs.rs/prav-core/badge.svg)](https://docs.rs/prav-core)
+
 High-performance, `no_std`, zero-heap Union Find decoder for quantum error correction.
 
 ## Features
