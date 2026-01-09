@@ -11,7 +11,12 @@ lcov.info
 __pycache__/
 *.pyc
 *.pyo
+*.so
 .hypothesis/
+
+# Profiling
+perf.data
+perf.data.old
 
 # Generated files
 prav-circuit-bench/dems/
