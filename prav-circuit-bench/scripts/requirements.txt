@@ -1,0 +1,2 @@
+# Dependencies for DEM generation scripts
+stim>=1.12.0

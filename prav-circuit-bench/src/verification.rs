@@ -15,6 +15,14 @@ pub struct VerificationResult {
 /// Verify corrections and compute predicted logical flips.
 ///
 /// Returns verification result with defect resolution and predicted logical.
+///
+/// # Logical Boundary Mapping
+///
+/// For rotated surface codes, stabilizer type is determined by coordinate parity:
+/// - Even parity (x + y) % 2 == 0 → Z stabilizer → boundary corrections affect Z logical
+/// - Odd parity (x + y) % 2 == 1 → X stabilizer → boundary corrections affect X logical
+///
+/// This fixes the corner boundary bug where corners would incorrectly flip both logicals.
 pub fn verify_with_logical(
     syndrome: &[u64],
     corrections: &[EdgeCorrection],
@@ -35,16 +43,23 @@ pub fn verify_with_logical(
 
         // Boundary correction
         if corr.v == u32::MAX {
-            // Determine which boundary based on u's coordinates
+            // Determine which logical based on stabilizer type (coordinate parity)
             let (x, y, _t) = config.linear_to_coord(u);
 
-            // Left/right boundary: logical Z (bit 1)
-            if x == 0 || x == config.width - 1 {
-                predicted_logical ^= 0b10;
-            }
-            // Top/bottom boundary: logical X (bit 0)
-            if y == 0 || y == config.height - 1 {
-                predicted_logical ^= 0b01;
+            // Check if this is actually a boundary position
+            let on_x_boundary = x == 0 || x == config.width - 1;
+            let on_y_boundary = y == 0 || y == config.height - 1;
+
+            if on_x_boundary || on_y_boundary {
+                // Use stabilizer parity to determine which logical is affected
+                // Even parity → Z stabilizer → Z logical (bit 1)
+                // Odd parity → X stabilizer → X logical (bit 0)
+                let stabilizer_parity = (x + y) % 2;
+                if stabilizer_parity == 0 {
+                    predicted_logical ^= 0b10; // Z logical
+                } else {
+                    predicted_logical ^= 0b01; // X logical
+                }
             }
         } else {
             // Interior edge - flip v

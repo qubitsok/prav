@@ -48,6 +48,11 @@ struct Args {
     #[arg(long)]
     dem: Option<PathBuf>,
 
+    /// Directory containing Stim DEM files (runs batch threshold study)
+    /// DEM filenames should match pattern: surface_d{distance}_r{rounds}_p{noise}.dem
+    #[arg(long)]
+    dem_dir: Option<PathBuf>,
+
     /// Number of shots per configuration
     #[arg(long, default_value_t = 10000)]
     shots: usize,
@@ -199,8 +204,217 @@ fn get_config_for_distance(d: usize) -> Grid3DConfig {
     }
 }
 
+/// Parsed DEM file info extracted from filename.
+#[derive(Debug, Clone)]
+struct DemFileInfo {
+    path: PathBuf,
+    distance: usize,
+    rounds: usize,
+    noise_level: f64,
+}
+
+/// Parse DEM filename to extract distance, rounds, and noise level.
+/// Expected format: surface_d{distance}_r{rounds}_p{noise}.dem
+fn parse_dem_filename(path: &PathBuf) -> Option<DemFileInfo> {
+    let filename = path.file_stem()?.to_str()?;
+
+    // Parse distance: d{N}
+    let d_idx = filename.find("_d")?;
+    let after_d = &filename[d_idx + 2..];
+    let d_end = after_d.find('_').unwrap_or(after_d.len());
+    let distance: usize = after_d[..d_end].parse().ok()?;
+
+    // Parse rounds: r{N}
+    let r_idx = filename.find("_r")?;
+    let after_r = &filename[r_idx + 2..];
+    let r_end = after_r.find('_').unwrap_or(after_r.len());
+    let rounds: usize = after_r[..r_end].parse().ok()?;
+
+    // Parse noise: p{N.NNNN}
+    let p_idx = filename.find("_p")?;
+    let after_p = &filename[p_idx + 2..];
+    let noise_level: f64 = after_p.parse().ok()?;
+
+    Some(DemFileInfo {
+        path: path.clone(),
+        distance,
+        rounds,
+        noise_level,
+    })
+}
+
+/// Scan a directory for DEM files and return sorted info.
+fn scan_dem_directory(dir: &PathBuf) -> Vec<DemFileInfo> {
+    let mut files = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "dem") {
+                if let Some(info) = parse_dem_filename(&path) {
+                    files.push(info);
+                }
+            }
+        }
+    }
+
+    // Sort by distance, then by noise level
+    files.sort_by(|a, b| {
+        a.distance
+            .cmp(&b.distance)
+            .then(a.noise_level.partial_cmp(&b.noise_level).unwrap())
+    });
+
+    files
+}
+
+/// Run threshold study using DEM files from a directory.
+fn run_dem_directory_benchmark(
+    dem_files: &[DemFileInfo],
+    shots: usize,
+    seed: u64,
+    no_verify: bool,
+    csv: bool,
+) -> Vec<ThresholdPoint> {
+    let print_info = |s: &str| {
+        if csv {
+            eprintln!("{}", s);
+        } else {
+            println!("{}", s);
+        }
+    };
+
+    print_info("3D Circuit-Level Threshold Study: prav Union-Find Decoder (Stim DEMs)");
+    print_info(&"=".repeat(70));
+    print_info("");
+
+    if csv {
+        println!("{}", CSV_HEADER);
+    }
+
+    let mut all_points = Vec::new();
+    let mut current_distance = 0;
+
+    for dem_info in dem_files {
+        // Print distance header when it changes
+        if dem_info.distance != current_distance {
+            current_distance = dem_info.distance;
+            let config = get_config_for_distance(current_distance);
+            print_info(&format!(
+                "Distance d={}, {}x{}x{} grid, {} rounds (from Stim DEM)",
+                current_distance,
+                config.width,
+                config.height,
+                config.depth,
+                dem_info.rounds
+            ));
+        }
+
+        // Load and parse DEM
+        let dem_content = match std::fs::read_to_string(&dem_info.path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Warning: Failed to read {:?}: {}", dem_info.path, e);
+                continue;
+            }
+        };
+        let parsed = match dem::parser::parse_dem(&dem_content) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Warning: Failed to parse {:?}: {}", dem_info.path, e);
+                continue;
+            }
+        };
+
+        // Create grid config from DEM info
+        let config = Grid3DConfig::for_rotated_surface(dem_info.distance);
+        let mapper = DetectorMapper::new(&config);
+
+        // Sample syndromes from DEM
+        let mut sampler = CircuitSampler::new(&parsed, seed);
+        let samples: Vec<SyndromeWithLogical> = sampler
+            .sample_batch(shots)
+            .into_iter()
+            .map(|(syn, logical_flips)| {
+                let remapped = mapper.remap_syndrome(&syn, &parsed.detectors);
+                SyndromeWithLogical {
+                    syndrome: remapped,
+                    logical_flips,
+                }
+            })
+            .collect();
+
+        // Run benchmark
+        let results = benchmark_3d_circuit(&config, &samples, !no_verify);
+        let stats = calculate_percentiles(&results.times);
+
+        // Create threshold point
+        let point = ThresholdPoint::new(
+            dem_info.distance,
+            dem_info.noise_level,
+            results.total_shots,
+            dem_info.rounds,
+            results.logical_errors,
+            stats.avg_us,
+        );
+
+        if csv {
+            println!("{}", point.to_csv());
+        } else {
+            print_info(&format!(
+                "  p={:.4}: LER={:.2e}/rnd [{:.2e},{:.2e}], n={}, t={:.2}µs",
+                dem_info.noise_level,
+                point.ler_per_round,
+                point.ler_ci_low,
+                point.ler_ci_high,
+                point.num_shots,
+                point.decode_time_us,
+            ));
+        }
+
+        all_points.push(point);
+    }
+
+    print_info("");
+    all_points
+}
+
 fn main() {
     let args = Args::parse();
+
+    // Handle --dem-dir mode (batch DEM processing)
+    if let Some(ref dem_dir) = args.dem_dir {
+        let dem_files = scan_dem_directory(dem_dir);
+        if dem_files.is_empty() {
+            eprintln!("Error: No DEM files found in {:?}", dem_dir);
+            eprintln!("Expected filename format: surface_d{{distance}}_r{{rounds}}_p{{noise}}.dem");
+            std::process::exit(1);
+        }
+
+        eprintln!("Found {} DEM files in {:?}", dem_files.len(), dem_dir);
+
+        let all_points =
+            run_dem_directory_benchmark(&dem_files, args.shots, args.seed, args.no_verify, args.csv);
+
+        // Extract unique distances and error rates for Lambda table
+        let mut distances: Vec<usize> = all_points.iter().map(|p| p.distance).collect();
+        distances.sort();
+        distances.dedup();
+
+        let mut error_probs: Vec<f64> = all_points.iter().map(|p| p.physical_error_rate).collect();
+        error_probs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        error_probs.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+
+        // Print Lambda table
+        if !args.csv && distances.len() >= 2 {
+            print_lambda_table(&all_points, &distances, &error_probs);
+        }
+
+        if !args.csv {
+            println!("Benchmark complete.");
+        }
+        return;
+    }
 
     // Determine distances and error rates
     let distances: Vec<usize> = if args.threshold_study {

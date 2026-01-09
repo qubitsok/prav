@@ -16,9 +16,9 @@
 //!
 //! # Logical Errors
 //!
-//! Boundary errors contribute to logical frame changes:
-//! - Left boundary (x=0): contributes to logical Z
-//! - Bottom boundary (y=0): contributes to logical X
+//! Boundary errors contribute to logical frame changes based on stabilizer parity:
+//! - Even parity (x+y) % 2 == 0 → Z stabilizer → boundary affects Z logical
+//! - Odd parity (x+y) % 2 == 1 → X stabilizer → boundary affects X logical
 
 use rand::Rng;
 use rand::SeedableRng;
@@ -120,8 +120,13 @@ fn generate_correlated_single(
             // Left boundary edge (x=0, only flips one detector)
             if rng.random::<f64>() < p_space {
                 flip_detector(&mut syndrome, config, 0, y, t, num_words);
-                // Left boundary contributes to logical Z
-                logical_flips ^= 0b10; // bit 1 = Z
+                // Use stabilizer parity to determine logical
+                // (0 + y) % 2 determines if Z or X stabilizer
+                if y % 2 == 0 {
+                    logical_flips ^= 0b10; // Z logical
+                } else {
+                    logical_flips ^= 0b01; // X logical
+                }
             }
 
             // Interior horizontal edges
@@ -134,9 +139,14 @@ fn generate_correlated_single(
 
             // Right boundary edge (x=width-1, only flips one detector)
             if config.width > 0 && rng.random::<f64>() < p_space {
-                flip_detector(&mut syndrome, config, config.width - 1, y, t, num_words);
-                // Right boundary also contributes to logical Z
-                logical_flips ^= 0b10; // bit 1 = Z
+                let x = config.width - 1;
+                flip_detector(&mut syndrome, config, x, y, t, num_words);
+                // Use stabilizer parity: (x + y) % 2
+                if (x + y) % 2 == 0 {
+                    logical_flips ^= 0b10; // Z logical
+                } else {
+                    logical_flips ^= 0b01; // X logical
+                }
             }
         }
 
@@ -145,8 +155,12 @@ fn generate_correlated_single(
             // Bottom boundary edge (y=0, only flips one detector)
             if rng.random::<f64>() < p_space {
                 flip_detector(&mut syndrome, config, x, 0, t, num_words);
-                // Bottom boundary contributes to logical X
-                logical_flips ^= 0b01; // bit 0 = X
+                // Use stabilizer parity: (x + 0) % 2
+                if x % 2 == 0 {
+                    logical_flips ^= 0b10; // Z logical
+                } else {
+                    logical_flips ^= 0b01; // X logical
+                }
             }
 
             // Interior vertical edges
@@ -159,9 +173,14 @@ fn generate_correlated_single(
 
             // Top boundary edge (y=height-1, only flips one detector)
             if config.height > 0 && rng.random::<f64>() < p_space {
-                flip_detector(&mut syndrome, config, x, config.height - 1, t, num_words);
-                // Top boundary also contributes to logical X
-                logical_flips ^= 0b01; // bit 0 = X
+                let y = config.height - 1;
+                flip_detector(&mut syndrome, config, x, y, t, num_words);
+                // Use stabilizer parity: (x + y) % 2
+                if (x + y) % 2 == 0 {
+                    logical_flips ^= 0b10; // Z logical
+                } else {
+                    logical_flips ^= 0b01; // X logical
+                }
             }
         }
     }

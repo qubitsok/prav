@@ -8,7 +8,8 @@
 .PHONY: prav-core prav-py dev watch
 .PHONY: examples tutorial tutorial-rect tutorial-tri tutorial-hex
 .PHONY: bench bench-aarch64 bench-wasm bench-arm bench-all-topologies
-.PHONY: bench-py bench-py-3d bench-fb bench-circuit
+.PHONY: bench-py bench-py-3d bench-fb bench-circuit bench-circuit-threshold
+.PHONY: generate-dems threshold-study threshold-study-csv
 .PHONY: check-all fmt clippy check lint doc
 
 # Default target
@@ -137,6 +138,26 @@ bench-fb:
 ## Run prav-circuit-bench
 bench-circuit:
 	cargo run -p prav-circuit-bench --release
+
+## Run prav-circuit-bench threshold study (phenomenological noise)
+bench-circuit-threshold:
+	cargo run -p prav-circuit-bench --release -- --threshold-study
+
+## Generate Stim DEM files for threshold studies
+generate-dems:
+	@echo "Generating Stim DEM files..."
+	@mkdir -p prav-circuit-bench/dems
+	pip install stim --quiet
+	python prav-circuit-bench/scripts/generate_dems.py --output-dir prav-circuit-bench/dems
+
+## Run threshold study using Stim DEM files
+threshold-study: generate-dems
+	cargo run -p prav-circuit-bench --release -- --dem-dir prav-circuit-bench/dems
+
+## Run threshold study with CSV output
+threshold-study-csv: generate-dems
+	cargo run -p prav-circuit-bench --release -- --dem-dir prav-circuit-bench/dems --csv > threshold_results.csv
+	@echo "Results saved to threshold_results.csv"
 
 # =============================================================================
 # Cross-compilation
@@ -275,6 +296,12 @@ help:
 	@echo "  bench-py-3d        Run 3D Python benchmarks"
 	@echo "  bench-fb           Run prav-fb-bench"
 	@echo "  bench-circuit      Run prav-circuit-bench"
+	@echo "  bench-circuit-threshold  Run circuit-bench threshold study"
+	@echo ""
+	@echo "Threshold Studies:"
+	@echo "  generate-dems      Generate Stim DEM files"
+	@echo "  threshold-study    Run threshold study using Stim DEMs"
+	@echo "  threshold-study-csv  Run threshold study and save CSV output"
 	@echo ""
 	@echo "Cross-compilation:"
 	@echo "  check-all          Check compilation for all targets"
