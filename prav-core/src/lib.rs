@@ -84,6 +84,9 @@ pub mod testing_grids_3d;
 /// Grid topology definitions (square, 3D, triangular, honeycomb).
 pub mod topology;
 
+/// Color code decoder for triangular lattices using the restriction decoder approach.
+pub mod color_code;
+
 /// Kani formal verification proofs for arena allocator.
 #[cfg(kani)]
 mod arena_kani;
@@ -132,3 +135,6 @@ pub use intrinsics::morton_encode_2d;
 
 // Circuit-level types
 pub use circuit::{CompiledDem, Detector, ErrorMechanism, ErrorTarget, LogicalObservable};
+
+// Color code types
+pub use color_code::{ColorCodeBoundaryConfig, ColorCodeGrid3DConfig, ColorCodeResult, FaceColor};

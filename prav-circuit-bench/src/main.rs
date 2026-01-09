@@ -68,7 +68,9 @@
 // Work-in-progress: infrastructure for future benchmarking features
 #![allow(dead_code, unused_imports)]
 
+mod color_code_bench;
 mod dem;
+mod dual_decoder;
 mod stats;
 mod surface_code;
 mod syndrome;
@@ -84,7 +86,9 @@ use prav_core::{
     ObservableMode, TestGrids3D, required_buffer_size,
 };
 
-use crate::stats::{CSV_HEADER, LatencyStats, SuppressionFactor, ThresholdPoint, calculate_percentiles};
+use crate::color_code_bench::{ColorCodeBenchConfig, benchmark_color_code, generate_color_code_syndromes};
+use crate::dual_decoder::{DualDecoderConfig, benchmark_dual_3d};
+use crate::stats::{CSV_HEADER, DUAL_CSV_HEADER, DualThresholdPoint, LatencyStats, SuppressionFactor, ThresholdPoint, calculate_percentiles};
 use crate::surface_code::DetectorMapper;
 use crate::syndrome::{CircuitSampler, SyndromeWithLogical, generate_correlated_syndromes};
 use crate::verification::verify_with_logical;
@@ -218,6 +222,31 @@ struct Args {
     /// Example: --quick-bench 13
     #[arg(long, value_name = "DISTANCE")]
     quick_bench: Option<usize>,
+
+    /// Enable separate X/Z basis decoding.
+    ///
+    /// When set, syndromes are split into X and Z components which are
+    /// decoded independently. This matches real fault-tolerant QEC where
+    /// both bases must be decoded. Outputs separate X and Z timing and
+    /// logical error rates.
+    #[arg(long)]
+    dual_decode: bool,
+
+    /// Use 2D mode (single measurement round).
+    ///
+    /// Runs with depth=1 instead of depth=distance. Useful for testing
+    /// decoder performance on simpler problems or when only one round
+    /// of syndrome extraction is available.
+    #[arg(long)]
+    mode_2d: bool,
+
+    /// Run triangular color code benchmark.
+    ///
+    /// Uses the restriction decoder approach with three parallel Union-Find
+    /// decoders (one per color class). Supports (6,6,6) triangular color codes.
+    /// Default distances: 3, 5, 7. Default error rate: 1%.
+    #[arg(long)]
+    color_code: bool,
 }
 
 /// Error rates for threshold study mode.
@@ -698,6 +727,242 @@ fn print_helios_summary(point: &ThresholdPoint, stats: &stats::LatencyStats) {
     println!("Reference: arXiv:2301.08419, arXiv:2406.08491");
 }
 
+/// Run dual decoder benchmark (separate X/Z basis decoding).
+///
+/// This function handles the `--dual-decode` mode where X and Z stabilizers
+/// are decoded independently using separate decoders.
+fn run_dual_decode_benchmark(args: &Args) {
+    let print_info = |s: &str| {
+        if args.csv {
+            eprintln!("{}", s);
+        } else {
+            println!("{}", s);
+        }
+    };
+
+    let mode_str = if args.mode_2d { "2D" } else { "3D" };
+    print_info(&format!("Dual Decoder Benchmark ({} mode): prav Union-Find", mode_str));
+    print_info(&"=".repeat(70));
+    print_info("");
+
+    if args.csv {
+        println!("{}", DUAL_CSV_HEADER);
+    }
+
+    // Determine distances and error rates
+    let distances: Vec<usize> = if args.threshold_study {
+        THRESHOLD_STUDY_DISTANCES.to_vec()
+    } else {
+        args.distances.clone()
+    };
+
+    let error_probs: Vec<f64> = args.error_probs.clone().unwrap_or_else(|| {
+        if args.threshold_study {
+            THRESHOLD_STUDY_PROBS.to_vec()
+        } else {
+            CIRCUIT_ERROR_PROBS.to_vec()
+        }
+    });
+
+    let mut all_points: Vec<DualThresholdPoint> = Vec::new();
+
+    for &d in &distances {
+        // Determine depth based on mode
+        let depth = if args.mode_2d { 1 } else { d };
+        let config = DualDecoderConfig::new(d, depth);
+
+        let grid_str = format!(
+            "{}x{}x{} (X: {}x{}x{}, Z: {}x{}x{})",
+            config.unified_config.width,
+            config.unified_config.height,
+            config.unified_config.depth,
+            config.x_config.width,
+            config.x_config.height,
+            config.x_config.depth,
+            config.z_config.width,
+            config.z_config.height,
+            config.z_config.depth,
+        );
+        print_info(&format!("Distance d={}, {} grid, {} rounds", d, grid_str, depth));
+
+        for &p in &error_probs {
+            // Generate syndromes with unified config
+            let samples = generate_correlated_syndromes(
+                &config.unified_config,
+                p,
+                p,
+                args.shots,
+                args.seed,
+            );
+
+            // Run dual benchmark
+            let results = benchmark_dual_3d(&config, &samples, !args.no_verify);
+
+            // Calculate average times
+            let x_avg_us = results.x_times.iter().map(|d| d.as_secs_f64() * 1e6).sum::<f64>()
+                / results.x_times.len().max(1) as f64;
+            let z_avg_us = results.z_times.iter().map(|d| d.as_secs_f64() * 1e6).sum::<f64>()
+                / results.z_times.len().max(1) as f64;
+
+            // Create threshold point
+            let point = DualThresholdPoint::new(
+                d,
+                p,
+                results.total_shots,
+                depth,
+                results.x_logical_errors,
+                results.z_logical_errors,
+                results.combined_logical_errors,
+                x_avg_us,
+                z_avg_us,
+            );
+
+            if args.csv {
+                println!("{}", point.to_csv());
+            } else {
+                print_info(&format!(
+                    "  p={:.4}: X={:.2e}/rnd Z={:.2e}/rnd Comb={:.2e}/rnd | X:{:.2}µs Z:{:.2}µs Tot:{:.2}µs ({:.0}ns/rnd)",
+                    p,
+                    point.x_ler_per_round,
+                    point.z_ler_per_round,
+                    point.combined_ler_per_round,
+                    point.x_decode_time_us,
+                    point.z_decode_time_us,
+                    point.total_decode_time_us,
+                    point.time_per_round_ns(),
+                ));
+            }
+
+            all_points.push(point);
+        }
+
+        print_info("");
+    }
+
+    if !args.csv {
+        print_info("Dual decode benchmark complete.");
+    }
+}
+
+/// Run triangular color code benchmark.
+///
+/// This function handles the `--color-code` mode using the restriction decoder
+/// approach with three parallel Union-Find decoders (one per color class).
+fn run_color_code_benchmark(args: &Args) {
+    let print_info = |s: &str| {
+        if args.csv {
+            eprintln!("{}", s);
+        } else {
+            println!("{}", s);
+        }
+    };
+
+    let mode_str = if args.mode_2d { "2D" } else { "3D" };
+    print_info(&format!("Triangular Color Code Benchmark ({} mode): prav Restriction Decoder", mode_str));
+    print_info(&"=".repeat(70));
+    print_info("Architecture: Three parallel Union-Find decoders (Red, Green, Blue)");
+    print_info("");
+
+    // CSV header for color code results
+    const COLOR_CODE_CSV_HEADER: &str = "distance,error_rate,shots,rounds,logical_errors,ler_per_round,decode_time_us,defects_red,defects_green,defects_blue";
+    if args.csv {
+        println!("{}", COLOR_CODE_CSV_HEADER);
+    }
+
+    // Determine distances and error rates
+    let distances: Vec<usize> = if args.threshold_study {
+        vec![3, 5, 7, 9]
+    } else {
+        args.distances.clone()
+    };
+
+    let error_probs: Vec<f64> = args.error_probs.clone().unwrap_or_else(|| {
+        if args.threshold_study {
+            vec![0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.010]
+        } else {
+            vec![0.001, 0.003, 0.005, 0.01]
+        }
+    });
+
+    for &d in &distances {
+        // Create color code config
+        let config = if args.mode_2d {
+            ColorCodeBenchConfig::new_2d(d)
+        } else {
+            ColorCodeBenchConfig::new_3d(d)
+        };
+
+        print_info(&format!(
+            "Distance d={}, {}x{}x{} triangular grid, {} rounds",
+            d,
+            config.grid_config.width,
+            config.grid_config.height,
+            config.depth,
+            config.depth
+        ));
+
+        for &p in &error_probs {
+            // Generate syndromes
+            let samples = generate_color_code_syndromes(
+                &config.grid_config,
+                p,
+                args.shots,
+                args.seed,
+            );
+
+            // Run benchmark
+            let results = benchmark_color_code(&config, &samples);
+
+            // Calculate LER per round
+            let ler_per_round = if config.depth > 0 {
+                results.logical_error_rate() / config.depth as f64
+            } else {
+                results.logical_error_rate()
+            };
+
+            if args.csv {
+                // CSV output: distance,error_rate,shots,rounds,logical_errors,ler_per_round,decode_time_us,defects_r,defects_g,defects_b
+                println!(
+                    "{},{:.6},{},{},{},{:.6e},{:.2},{},{},{}",
+                    d,
+                    p,
+                    results.total_shots,
+                    config.depth,
+                    results.logical_errors,
+                    ler_per_round,
+                    results.avg_decode_time_us(),
+                    results.defects_by_color[0],
+                    results.defects_by_color[1],
+                    results.defects_by_color[2],
+                );
+            } else {
+                print_info(&format!(
+                    "  p={:.4}: LER={:.2e}/rnd, n={}, t={:.2}µs, defects[R/G/B]={}/{}/{}",
+                    p,
+                    ler_per_round,
+                    results.total_shots,
+                    results.avg_decode_time_us(),
+                    results.defects_by_color[0],
+                    results.defects_by_color[1],
+                    results.defects_by_color[2],
+                ));
+            }
+        }
+
+        print_info("");
+    }
+
+    if !args.csv {
+        print_info("Color code benchmark complete.");
+        print_info("");
+        print_info("Note: The restriction decoder projects the color code onto three");
+        print_info("surface-code-like subgraphs, one per color. Each subgraph is decoded");
+        print_info("independently using Union-Find, and corrections are lifted back.");
+        print_info("");
+        print_info("Reference: https://quantum-journal.org/papers/q-2023-02-21-929/");
+    }
+}
+
 fn main() {
     let mut args = Args::parse();
 
@@ -712,6 +977,18 @@ fn main() {
     if let Some(d) = args.quick_bench {
         args.distances = vec![d];
         args.error_probs = Some(vec![0.001]);
+    }
+
+    // Handle --dual-decode mode
+    if args.dual_decode {
+        run_dual_decode_benchmark(&args);
+        return;
+    }
+
+    // Handle --color-code mode (triangular color code)
+    if args.color_code {
+        run_color_code_benchmark(&args);
+        return;
     }
 
     // Handle --dem-dir mode (batch DEM processing)

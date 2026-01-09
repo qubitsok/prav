@@ -1,4 +1,5 @@
 mod arena;
+mod color_code;
 mod common;
 mod decoder;
 mod intrinsics;
