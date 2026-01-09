@@ -29,6 +29,9 @@ pub mod tiled;
 /// Sparse syndrome decoder for low error rates.
 pub mod sparse;
 
+/// Sliding window streaming decoder for real-time QEC.
+pub mod streaming;
+
 /// Union-Find data structure for efficient cluster merging.
 pub mod union_find;
 
@@ -65,3 +68,9 @@ pub use observables::{EdgeObservableLut, ObservableMode, phenomenological_bounda
 
 // Sparse decoder
 pub use sparse::{decode_sparse, extract_defects, SparseState, SPARSE_THRESHOLD};
+
+// Streaming decoder
+pub use streaming::{
+    CommittedCorrections, FlushIterator, RoundMetadata, StreamingConfig, StreamingDecoder,
+    streaming_buffer_size,
+};

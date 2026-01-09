@@ -110,6 +110,12 @@ pub use decoder::{ClusterGrowth, Peeling, StaticGraph, UnionFind};
 // Observable tracking types
 pub use decoder::{EdgeObservableLut, ObservableMode, phenomenological_boundary_observable};
 
+// Streaming decoder for real-time QEC
+pub use decoder::{
+    CommittedCorrections, FlushIterator, RoundMetadata, StreamingConfig, StreamingDecoder,
+    streaming_buffer_size,
+};
+
 // High-level engine
 pub use qec_engine::QecEngine;
 

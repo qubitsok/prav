@@ -23,6 +23,7 @@ mod scheduler_optimization;
 mod selective_spill_prop;
 mod sparse_active;
 mod sparse_worklist;
+mod streaming_tests;
 mod trace_optimization;
 mod vertical_diffusion_log;
 mod vertical_merge;
