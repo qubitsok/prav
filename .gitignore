@@ -6,3 +6,15 @@ venv/
 .idea/
 .env
 lcov.info
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.hypothesis/
+
+# Generated files
+prav-circuit-bench/dems/
+
+# pip artifacts
+=*
