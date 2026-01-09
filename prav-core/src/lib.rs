@@ -107,6 +107,9 @@ pub use decoder::{
 // Decoder traits (for advanced users and benchmarks)
 pub use decoder::{ClusterGrowth, Peeling, StaticGraph, UnionFind};
 
+// Observable tracking types
+pub use decoder::{EdgeObservableLut, ObservableMode, phenomenological_boundary_observable};
+
 // High-level engine
 pub use qec_engine::QecEngine;
 

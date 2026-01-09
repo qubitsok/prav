@@ -54,13 +54,15 @@
 //!
 //! ## Logical Error Tracking
 //!
-//! Boundary errors can cause logical errors. The stabilizer type determines
-//! which logical is affected:
+//! Boundary errors can cause logical errors. The boundary location determines
+//! which logical observable is affected:
 //!
-//! - **Even parity** `(x + y) % 2 == 0` → Z stabilizer → Z logical (bit 1)
-//! - **Odd parity** `(x + y) % 2 == 1` → X stabilizer → X logical (bit 0)
+//! - **Left/right boundaries** (x = 0 or x = width-1) → Z observable (bit 1)
+//! - **Top/bottom boundaries** (y = 0 or y = height-1) → X observable (bit 0)
 //!
-//! This convention matches Stim's rotated surface code.
+//! This matches the rotated surface code convention where Z strings run
+//! horizontally (connecting left/right) and X strings run vertically
+//! (connecting top/bottom).
 //!
 //! ## Usage
 //!
@@ -260,19 +262,18 @@ fn generate_correlated_single(
 
     // Space-like errors (data qubit errors)
     // These create edges in the matching graph
+    //
+    // For rotated surface codes:
+    // - Left/right boundaries (x = 0 or x = width-1) → Z observable (bit 1)
+    // - Top/bottom boundaries (y = 0 or y = height-1) → X observable (bit 0)
     for t in 0..config.depth {
         // Horizontal edges (including left boundary)
         for y in 0..config.height {
             // Left boundary edge (x=0, only flips one detector)
+            // Left boundary always affects Z logical observable
             if rng.random::<f64>() < p_space {
                 flip_detector(&mut syndrome, config, 0, y, t, num_words);
-                // Use stabilizer parity to determine logical
-                // (0 + y) % 2 determines if Z or X stabilizer
-                if y % 2 == 0 {
-                    logical_flips ^= 0b10; // Z logical
-                } else {
-                    logical_flips ^= 0b01; // X logical
-                }
+                logical_flips ^= 0b10; // Z logical
             }
 
             // Interior horizontal edges
@@ -284,29 +285,21 @@ fn generate_correlated_single(
             }
 
             // Right boundary edge (x=width-1, only flips one detector)
+            // Right boundary always affects Z logical observable
             if config.width > 0 && rng.random::<f64>() < p_space {
                 let x = config.width - 1;
                 flip_detector(&mut syndrome, config, x, y, t, num_words);
-                // Use stabilizer parity: (x + y) % 2
-                if (x + y) % 2 == 0 {
-                    logical_flips ^= 0b10; // Z logical
-                } else {
-                    logical_flips ^= 0b01; // X logical
-                }
+                logical_flips ^= 0b10; // Z logical
             }
         }
 
         // Vertical edges (including top/bottom boundaries)
         for x in 0..config.width {
             // Bottom boundary edge (y=0, only flips one detector)
+            // Bottom boundary always affects X logical observable
             if rng.random::<f64>() < p_space {
                 flip_detector(&mut syndrome, config, x, 0, t, num_words);
-                // Use stabilizer parity: (x + 0) % 2
-                if x % 2 == 0 {
-                    logical_flips ^= 0b10; // Z logical
-                } else {
-                    logical_flips ^= 0b01; // X logical
-                }
+                logical_flips ^= 0b01; // X logical
             }
 
             // Interior vertical edges
@@ -318,15 +311,11 @@ fn generate_correlated_single(
             }
 
             // Top boundary edge (y=height-1, only flips one detector)
+            // Top boundary always affects X logical observable
             if config.height > 0 && rng.random::<f64>() < p_space {
                 let y = config.height - 1;
                 flip_detector(&mut syndrome, config, x, y, t, num_words);
-                // Use stabilizer parity: (x + y) % 2
-                if (x + y) % 2 == 0 {
-                    logical_flips ^= 0b10; // Z logical
-                } else {
-                    logical_flips ^= 0b01; // X logical
-                }
+                logical_flips ^= 0b01; // X logical
             }
         }
     }

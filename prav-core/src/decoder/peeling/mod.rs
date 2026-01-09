@@ -29,6 +29,7 @@
 
 #![allow(unsafe_op_in_unsafe_fn)]
 
+use crate::decoder::observables::ObservableMode;
 use crate::decoder::state::DecodingState;
 use crate::decoder::types::EdgeCorrection;
 use crate::intrinsics::tzcnt;
@@ -503,6 +504,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, ST
 
     fn emit_linear(&mut self, u: u32, v: u32) {
         if v == u32::MAX {
+            // Boundary correction
             let blk_idx = (u as usize) / 64;
             let bit_idx = (u as usize) % 64;
 
@@ -520,9 +522,13 @@ impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, ST
             }
             let word_ptr = unsafe { self.boundary_bitmap.get_unchecked_mut(blk_idx) };
             *word_ptr ^= 1 << bit_idx;
+
+            // Accumulate boundary observable
+            self.accumulate_boundary_observable(u);
             return;
         }
 
+        // Interior edge
         let (u, v) = if u < v { (u, v) } else { (v, u) };
         let diff = v - u;
 
@@ -555,6 +561,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, ST
         }
         let word_ptr = unsafe { self.edge_bitmap.get_unchecked_mut(word_idx) };
         *word_ptr ^= 1 << bit_idx;
+
+        // Accumulate edge observable (circuit-level only)
+        self.accumulate_edge_observable(idx);
     }
 
     fn get_coord(&self, u: u32) -> (usize, usize, usize) {
@@ -569,6 +578,93 @@ impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, ST
             let y = u >> self.graph.shift_y;
             let x = u & (self.stride_y - 1);
             (x, y, 0)
+        }
+    }
+}
+
+// Observable accumulation methods
+impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
+    /// Accumulates the observable for a boundary correction.
+    ///
+    /// Called when emitting a boundary correction (v == u32::MAX).
+    /// The observable contribution depends on the tracking mode.
+    ///
+    /// For phenomenological mode, if the node is not on a grid boundary,
+    /// we determine which boundary the cluster reached by finding the
+    /// nearest boundary (heuristic: clusters grow outward).
+    #[inline(always)]
+    fn accumulate_boundary_observable(&mut self, node: u32) {
+        match self.observable_mode {
+            ObservableMode::Disabled => {
+                // Zero overhead when disabled
+            }
+            ObservableMode::Phenomenological => {
+                // Compute observable from boundary position
+                let (x, y, _z) = <Self as Peeling>::get_coord(self, node);
+
+                // Check if node is directly on a boundary
+                let on_left = x == 0;
+                let on_right = x == self.width.saturating_sub(1);
+                let on_bottom = y == 0;
+                let on_top = y == self.height.saturating_sub(1);
+
+                let obs = if on_left || on_right {
+                    // Node is on left/right boundary → Z observable
+                    0b10
+                } else if on_bottom || on_top {
+                    // Node is on top/bottom boundary → X observable
+                    0b01
+                } else {
+                    // Interior node - determine nearest boundary
+                    // The cluster grew to reach a boundary; use nearest as heuristic
+                    let dist_left = x;
+                    let dist_right = self.width.saturating_sub(1).saturating_sub(x);
+                    let dist_bottom = y;
+                    let dist_top = self.height.saturating_sub(1).saturating_sub(y);
+
+                    let min_x_dist = dist_left.min(dist_right);
+                    let min_y_dist = dist_bottom.min(dist_top);
+
+                    if min_x_dist <= min_y_dist {
+                        // Left/right boundary is closer → Z observable
+                        0b10
+                    } else {
+                        // Top/bottom boundary is closer → X observable
+                        0b01
+                    }
+                };
+
+                self.predicted_observables ^= obs;
+            }
+            ObservableMode::CircuitLevel => {
+                // Look up from LUT
+                if let Some(lut) = &self.edge_observable_lut {
+                    let obs = lut.get_boundary_observable(node as usize);
+                    self.predicted_observables ^= obs;
+                }
+            }
+        }
+    }
+
+    /// Accumulates the observable for an interior edge correction.
+    ///
+    /// Called when emitting an interior edge correction.
+    /// Only applies for circuit-level tracking (phenomenological interior edges
+    /// don't affect observables).
+    #[inline(always)]
+    fn accumulate_edge_observable(&mut self, edge_idx: usize) {
+        match self.observable_mode {
+            ObservableMode::Disabled | ObservableMode::Phenomenological => {
+                // Interior edges don't affect observables in phenomenological model
+                // Zero overhead when disabled
+            }
+            ObservableMode::CircuitLevel => {
+                // Look up from LUT
+                if let Some(lut) = &self.edge_observable_lut {
+                    let obs = lut.get_edge_observable(edge_idx);
+                    self.predicted_observables ^= obs;
+                }
+            }
         }
     }
 }

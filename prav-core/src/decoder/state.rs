@@ -8,6 +8,7 @@
 
 use crate::arena::Arena;
 use crate::decoder::graph::StaticGraph;
+use crate::decoder::observables::{EdgeObservableLut, ObservableMode};
 use crate::topology::Topology;
 
 // Re-export types for backward compatibility with imports from decoder::state::*
@@ -132,6 +133,25 @@ pub struct DecodingState<'a, T: Topology, const STRIDE_Y: usize> {
     pub boundary_config: BoundaryConfig,
     /// Offset for parent array (used in some optimizations).
     pub parent_offset: usize,
+
+    // Observable Tracking
+    /// Accumulated logical observable flips (XOR of correction edge observables).
+    ///
+    /// After decoding, this contains the predicted logical flips as a bitmask.
+    /// Bit 0 = X observable, bit 1 = Z observable, etc.
+    pub predicted_observables: u8,
+
+    /// Observable tracking mode.
+    ///
+    /// Controls how the decoder tracks logical observables during correction.
+    /// See [`ObservableMode`] for available modes and their characteristics.
+    pub observable_mode: ObservableMode,
+
+    /// Optional edge→observable lookup table for circuit-level tracking.
+    ///
+    /// When `observable_mode` is [`ObservableMode::CircuitLevel`], this lookup
+    /// table provides the frame_changes for each edge.
+    pub edge_observable_lut: Option<&'a EdgeObservableLut<'a>>,
 
     /// Phantom marker for the topology type parameter.
     pub _marker: core::marker::PhantomData<T>,
@@ -299,6 +319,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
             scalar_fallback_mask: 0,
             boundary_config: BoundaryConfig::default(),
             parent_offset: 0,
+            predicted_observables: 0,
+            observable_mode: ObservableMode::Disabled,
+            edge_observable_lut: None,
             _marker: core::marker::PhantomData,
         };
 
@@ -389,6 +412,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
         for (i, p) in self.parents.iter_mut().enumerate() {
             *p = i as u32;
         }
+
+        // Reset observable accumulator
+        self.predicted_observables = 0;
     }
 
     /// Loads erasure information indicating which qubits were lost.
@@ -519,6 +545,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
         self.active_mask.fill(0);
         self.active_block_mask = 0;
 
+        // Reset observable accumulator for next decode cycle
+        self.predicted_observables = 0;
+
         let boundary_idx = self.parents.len() - 1;
         self.parents[boundary_idx] = boundary_idx as u32;
     }
@@ -632,5 +661,77 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
     pub fn peel_forest(&mut self, corrections: &mut [EdgeCorrection]) -> usize {
         use super::peeling::Peeling;
         Peeling::peel_forest(self, corrections)
+    }
+}
+
+// Observable tracking methods
+impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
+    /// Returns the predicted observable flips after decoding.
+    ///
+    /// This value is the XOR accumulation of all frame_changes from
+    /// corrections emitted during the decoding process.
+    ///
+    /// # Returns
+    ///
+    /// Bitmask of predicted logical observable flips:
+    /// - Bit 0: X observable
+    /// - Bit 1: Z observable
+    /// - Additional bits for codes with more observables
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// decoder.decode(&mut corrections);
+    /// let predicted = decoder.predicted_observables();
+    /// if predicted != ground_truth {
+    ///     logical_errors += 1;
+    /// }
+    /// ```
+    #[inline(always)]
+    pub fn predicted_observables(&self) -> u8 {
+        self.predicted_observables
+    }
+
+    /// Sets the observable tracking mode.
+    ///
+    /// Must be called before decoding to enable observable tracking.
+    /// See [`ObservableMode`] for available modes.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The observable tracking mode to use
+    #[inline]
+    pub fn set_observable_mode(&mut self, mode: ObservableMode) {
+        self.observable_mode = mode;
+    }
+
+    /// Returns the current observable tracking mode.
+    #[inline(always)]
+    pub fn observable_mode(&self) -> ObservableMode {
+        self.observable_mode
+    }
+
+    /// Sets the edge observable lookup table for circuit-level tracking.
+    ///
+    /// The lookup table provides frame_changes for each edge, enabling
+    /// accurate observable tracking with circuit-level noise models.
+    ///
+    /// # Arguments
+    ///
+    /// * `lut` - Reference to the edge observable lookup table
+    ///
+    /// # Note
+    ///
+    /// The lookup table must remain valid for the lifetime of the decoder.
+    /// This is typically ensured by allocating the LUT from the same arena.
+    #[inline]
+    pub fn set_edge_observable_lut(&mut self, lut: &'a EdgeObservableLut<'a>) {
+        self.edge_observable_lut = Some(lut);
+    }
+
+    /// Clears the edge observable lookup table.
+    #[inline]
+    pub fn clear_edge_observable_lut(&mut self) {
+        self.edge_observable_lut = None;
     }
 }

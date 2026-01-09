@@ -31,6 +31,7 @@
 
 use crate::arena::Arena;
 use crate::decoder::growth::ClusterGrowth;
+use crate::decoder::observables::{EdgeObservableLut, ObservableMode};
 use crate::decoder::state::DecodingState;
 use crate::decoder::types::EdgeCorrection;
 use crate::topology::Topology;
@@ -425,5 +426,89 @@ impl<'a, T: Topology> DynDecoder<'a, T> {
             DynDecoder::S256(d) => d.stride_y,
             DynDecoder::S512(d) => d.stride_y,
         }
+    }
+
+    // =========================================================================
+    // Observable Tracking Methods
+    // =========================================================================
+
+    /// Sets the observable tracking mode.
+    ///
+    /// Must be called before decoding to enable observable tracking.
+    /// See [`ObservableMode`] for available modes.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - The observable tracking mode to use
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// decoder.set_observable_mode(ObservableMode::Phenomenological);
+    /// decoder.decode(&mut corrections);
+    /// let predicted = decoder.predicted_observables();
+    /// ```
+    #[inline]
+    pub fn set_observable_mode(&mut self, mode: ObservableMode) {
+        dispatch!(self, set_observable_mode, mode);
+    }
+
+    /// Returns the current observable tracking mode.
+    #[inline]
+    #[must_use]
+    pub fn observable_mode(&self) -> ObservableMode {
+        dispatch!(self, observable_mode)
+    }
+
+    /// Returns the predicted observable flips after decoding.
+    ///
+    /// This value is the XOR accumulation of all frame_changes from
+    /// corrections emitted during the decoding process.
+    ///
+    /// # Returns
+    ///
+    /// Bitmask of predicted logical observable flips:
+    /// - Bit 0: X observable
+    /// - Bit 1: Z observable
+    /// - Additional bits for codes with more observables
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// decoder.set_observable_mode(ObservableMode::Phenomenological);
+    /// decoder.decode(&mut corrections);
+    /// let predicted = decoder.predicted_observables();
+    /// if predicted != ground_truth {
+    ///     logical_errors += 1;
+    /// }
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn predicted_observables(&self) -> u8 {
+        dispatch!(self, predicted_observables)
+    }
+
+    /// Sets the edge observable lookup table for circuit-level tracking.
+    ///
+    /// The lookup table provides frame_changes for each edge, enabling
+    /// accurate observable tracking with circuit-level noise models.
+    ///
+    /// # Arguments
+    ///
+    /// * `lut` - Reference to the edge observable lookup table
+    ///
+    /// # Note
+    ///
+    /// The lookup table must remain valid for the lifetime of the decoder.
+    /// This is typically ensured by allocating the LUT from the same arena.
+    #[inline]
+    pub fn set_edge_observable_lut(&mut self, lut: &'a EdgeObservableLut<'a>) {
+        dispatch!(self, set_edge_observable_lut, lut);
+    }
+
+    /// Clears the edge observable lookup table.
+    #[inline]
+    pub fn clear_edge_observable_lut(&mut self) {
+        dispatch!(self, clear_edge_observable_lut);
     }
 }

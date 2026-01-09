@@ -14,6 +14,9 @@ pub mod graph;
 /// Cluster growth algorithms for syndrome spreading.
 pub mod growth;
 
+/// Observable tracking for logical error measurement.
+pub mod observables;
+
 /// Peeling decoder for forest reconstruction and path tracing.
 pub mod peeling;
 
@@ -53,3 +56,6 @@ pub use graph::StaticGraph;
 pub use growth::ClusterGrowth;
 pub use peeling::Peeling;
 pub use union_find::UnionFind;
+
+// Observable tracking
+pub use observables::{EdgeObservableLut, ObservableMode, phenomenological_boundary_observable};

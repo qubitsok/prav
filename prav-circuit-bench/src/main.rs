@@ -81,7 +81,7 @@ use clap::Parser;
 
 use prav_core::{
     Arena, CIRCUIT_ERROR_PROBS, DecoderBuilder, DynDecoder, EdgeCorrection, Grid3D, Grid3DConfig,
-    TestGrids3D, required_buffer_size,
+    ObservableMode, TestGrids3D, required_buffer_size,
 };
 
 use crate::stats::{CSV_HEADER, SuppressionFactor, ThresholdPoint, calculate_percentiles};
@@ -281,12 +281,13 @@ fn warmup_decoder(
 /// This is where the actual decoding and measurement happens:
 ///
 /// 1. Create a prav decoder for the given grid configuration
-/// 2. Warm up the decoder (200 iterations)
-/// 3. For each syndrome sample:
+/// 2. Enable observable tracking (phenomenological mode)
+/// 3. Warm up the decoder (200 iterations)
+/// 4. For each syndrome sample:
 ///    - Load the syndrome into the decoder
 ///    - Time the decode() call
-///    - Optionally verify corrections
-///    - Track logical errors
+///    - Use decoder's predicted_observables() for logical tracking
+///    - Optionally verify corrections resolve all defects
 ///
 /// # Parameters
 ///
@@ -314,6 +315,10 @@ fn benchmark_3d_circuit(
         .build(&mut arena)
         .expect("Failed to create 3D decoder");
 
+    // Enable phenomenological observable tracking for proper logical error measurement.
+    // This accumulates observable flips as the decoder emits boundary corrections.
+    decoder.set_observable_mode(ObservableMode::Phenomenological);
+
     // Warmup
     let max_corrections = config.width * config.height * config.depth * 3;
     warmup_decoder(&mut decoder, samples, max_corrections);
@@ -338,20 +343,24 @@ fn benchmark_3d_circuit(
         let t0 = Instant::now();
         decoder.load_dense_syndromes(&sample.syndrome);
         let n = decoder.decode(&mut corrections);
+        // Get predicted observables before reset (reset clears the accumulator)
+        let predicted = decoder.predicted_observables();
         decoder.reset_for_next_cycle();
         times.push(t0.elapsed());
 
         total_corrections += n;
 
-        // Verify and track logical errors
+        // Track logical errors using decoder's built-in observable tracking
+        // This compares the decoder's accumulated observable flips with ground truth
+        if predicted != sample.logical_flips {
+            logical_errors += 1;
+        }
+
+        // Optionally verify that corrections resolve all defects
         if verify {
             let result = verify_with_logical(&sample.syndrome, &corrections[..n], config);
             if result.defects_resolved {
                 verified += 1;
-            }
-            // Logical error if predicted != actual
-            if result.predicted_logical != sample.logical_flips {
-                logical_errors += 1;
             }
         } else {
             verified += 1; // Count as verified if verification disabled

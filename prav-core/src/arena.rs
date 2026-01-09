@@ -75,7 +75,8 @@ pub const fn required_buffer_size(width: usize, height: usize, depth: usize) -> 
     let alloc_nodes = alloc_size + 1;
     let num_blocks = div_ceil(alloc_nodes, 64);
     let num_bitmask_words = div_ceil(num_blocks, 64);
-    let num_edges = alloc_nodes * 3;
+    // Use * 4 (power of 2) to match state.rs which uses * 4 for fast bit shifting
+    let num_edges = alloc_nodes * 4;
     let num_edge_words = div_ceil(num_edges, 64);
 
     // Each allocation has up to 63 bytes of alignment padding (for 64-byte alignment)
