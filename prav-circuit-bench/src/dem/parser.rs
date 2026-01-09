@@ -1,14 +1,94 @@
-//! Stim DEM format parser.
+//! # Stim DEM Format Parser
 //!
-//! Parses Stim's Detector Error Model format into a `ParsedDem` structure.
+//! This module parses Stim's Detector Error Model (DEM) format into our
+//! internal [`ParsedDem`] structure.
 //!
-//! # Supported Syntax
+//! ## What is a DEM File?
+//!
+//! A DEM file describes all the error mechanisms in a quantum error correction
+//! circuit. It's produced by Stim when you analyze a noisy circuit.
+//!
+//! The file is text-based and human-readable. It contains:
+//!
+//! 1. **Detector declarations**: Define measurement locations with coordinates
+//! 2. **Error declarations**: Define what errors can happen and their probabilities
+//! 3. **Control flow**: `repeat` blocks and `shift_detectors` for compact representation
+//!
+//! ## Supported Syntax
+//!
+//! ### Detector Declaration
 //!
 //! ```text
 //! detector(x, y, t) D<id>
-//! error(probability) D<id1> D<id2> ... [^ L<obs_id> ...]
+//! detector D<id>              # Without coordinates (defaults to 0,0,0)
+//! ```
+//!
+//! - `x, y`: Spatial coordinates on the 2D qubit grid
+//! - `t`: Time coordinate (measurement round number)
+//! - `D<id>`: Unique detector identifier (e.g., D0, D1, D42)
+//!
+//! ### Error Declaration
+//!
+//! ```text
+//! error(probability) D<id1> D<id2> ...
+//! error(probability) D<id1> ^ L<obs_id> ...
+//! ```
+//!
+//! - `probability`: Chance this error occurs (e.g., 0.001 for 0.1%)
+//! - `D<id>`: Detectors flipped by this error (usually 1 or 2)
+//! - `^ L<obs_id>`: Optional logical observable flip (L0, L1, etc.)
+//!
+//! ### Coordinate Shifting
+//!
+//! ```text
 //! shift_detectors(dx, dy, dt) ...
-//! repeat N { ... }
+//! shift_detectors N           # Compressed format
+//! ```
+//!
+//! Shifts the coordinate system for subsequent detector declarations.
+//! Used in repeat blocks to generate patterns.
+//!
+//! ### Repeat Blocks
+//!
+//! ```text
+//! repeat N {
+//!     # Content repeated N times
+//!     shift_detectors(...)
+//!     error(...)
+//! }
+//! ```
+//!
+//! For efficiency, we require DEMs to be flattened (no repeat blocks).
+//! Use `stim.Circuit.detector_error_model(flatten_loops=True)` when generating.
+//!
+//! ## Example DEM File
+//!
+//! ```text
+//! # d=3 surface code, 1 round
+//! detector(0, 0, 0) D0
+//! detector(1, 0, 0) D1
+//! detector(0, 1, 0) D2
+//! detector(1, 1, 0) D3
+//!
+//! # Interior edge errors
+//! error(0.001) D0 D1
+//! error(0.001) D2 D3
+//! error(0.001) D0 D2
+//! error(0.001) D1 D3
+//!
+//! # Boundary errors (affect logical)
+//! error(0.001) D0 ^ L0
+//! error(0.001) D1 ^ L1
+//! ```
+//!
+//! ## Usage
+//!
+//! ```ignore
+//! let content = std::fs::read_to_string("model.dem")?;
+//! let dem = parse_dem(&content)?;
+//!
+//! println!("Parsed {} detectors, {} error mechanisms",
+//!          dem.num_detectors, dem.mechanisms.len());
 //! ```
 
 use prav_core::Detector;
@@ -16,17 +96,39 @@ use prav_core::Detector;
 use super::types::{OwnedErrorMechanism, ParsedDem};
 
 /// Error type for DEM parsing.
+///
+/// These errors indicate problems with the DEM file format. They include
+/// the problematic content to help with debugging.
 #[derive(Debug, Clone)]
 pub enum DemError {
-    /// Invalid syntax in DEM file.
+    /// Invalid syntax that doesn't match any known DEM instruction.
+    ///
+    /// Examples:
+    /// - Missing parentheses: `error 0.01 D0`
+    /// - Unknown instruction: `foobar D0 D1`
     InvalidSyntax(String),
-    /// Invalid probability value.
+
+    /// Probability value couldn't be parsed as a float.
+    ///
+    /// Examples:
+    /// - `error(abc) D0` - "abc" is not a number
+    /// - `error(-1) D0` - negative probabilities are invalid
     InvalidProbability(String),
-    /// Invalid detector ID.
+
+    /// Detector ID couldn't be parsed.
+    ///
+    /// Examples:
+    /// - `error(0.01) Dfoo` - "foo" is not a number
+    /// - `detector(0,0,0) D` - missing ID number
     InvalidDetectorId(String),
-    /// Invalid observable ID.
+
+    /// Observable ID couldn't be parsed.
+    ///
+    /// Examples:
+    /// - `error(0.01) D0 ^ Lx` - "x" is not a number
     InvalidObservableId(String),
-    /// Unexpected end of input.
+
+    /// File ended unexpectedly (currently unused but reserved).
     UnexpectedEnd,
 }
 
@@ -44,7 +146,56 @@ impl std::fmt::Display for DemError {
 
 impl std::error::Error for DemError {}
 
-/// Parse a DEM file content into a `ParsedDem`.
+/// Parse a DEM file into a [`ParsedDem`] structure.
+///
+/// This is the main entry point for DEM parsing. It takes the file content
+/// as a string and returns a structured representation.
+///
+/// # Parsing Strategy
+///
+/// The parser processes the file line by line:
+///
+/// 1. **Skip**: Empty lines, comments (`#`), closing braces (`}`)
+/// 2. **Track**: `repeat` block depth (we skip content inside repeat blocks)
+/// 3. **Parse**: `detector`, `error`, `shift_detectors`, `logical_observable`
+///
+/// ## Coordinate Tracking
+///
+/// The parser maintains a coordinate offset that accumulates through
+/// `shift_detectors` instructions. Each detector's final coordinates are:
+/// `(x + offset_x, y + offset_y, t + offset_t)`.
+///
+/// ## Repeat Blocks
+///
+/// For simplicity, we skip content inside repeat blocks. This means DEMs
+/// must be flattened before parsing. Use Stim with `flatten_loops=True`:
+///
+/// ```python
+/// dem = circuit.detector_error_model(flatten_loops=True)
+/// ```
+///
+/// # Parameters
+///
+/// - `content`: The DEM file content as a string
+///
+/// # Returns
+///
+/// - `Ok(ParsedDem)`: Successfully parsed model
+/// - `Err(DemError)`: Parsing failed with details
+///
+/// # Example
+///
+/// ```ignore
+/// let content = r#"
+///     detector(0, 0, 0) D0
+///     detector(1, 0, 0) D1
+///     error(0.001) D0 D1
+/// "#;
+///
+/// let dem = parse_dem(content)?;
+/// assert_eq!(dem.num_detectors, 2);
+/// assert_eq!(dem.mechanisms.len(), 1);
+/// ```
 pub fn parse_dem(content: &str) -> Result<ParsedDem, DemError> {
     let mut dem = ParsedDem::new();
     let mut coord_offset = (0.0f32, 0.0f32, 0.0f32);
@@ -99,6 +250,17 @@ pub fn parse_dem(content: &str) -> Result<ParsedDem, DemError> {
     Ok(dem)
 }
 
+/// Parse a detector declaration line.
+///
+/// # Formats Supported
+///
+/// ```text
+/// detector(x, y, t) D<id>   # With coordinates
+/// detector D<id>            # Without coordinates (defaults to 0,0,0)
+/// ```
+///
+/// The final coordinates are computed as `(x + offset.0, y + offset.1, t + offset.2)`
+/// to account for any preceding `shift_detectors` instructions.
 fn parse_detector_line(
     line: &str,
     dem: &mut ParsedDem,
@@ -150,6 +312,28 @@ fn parse_detector_line(
     Ok(())
 }
 
+/// Parse an error mechanism declaration line.
+///
+/// # Format
+///
+/// ```text
+/// error(probability) D<id1> D<id2> ... [^ L<obs_id> ...]
+/// ```
+///
+/// ## Parts
+///
+/// - `probability`: Float in parentheses, e.g., `0.001` for 0.1% error rate
+/// - `D<id>`: Zero or more detector IDs that this error flips
+/// - `^ L<obs_id>`: Optional logical observable effects after the caret
+///
+/// ## Examples
+///
+/// ```text
+/// error(0.001) D0 D1           # Edge error, no logical effect
+/// error(0.001) D0              # Boundary error, no logical effect
+/// error(0.002) D0 ^ L0         # Boundary error that flips L0
+/// error(0.001) D0 D1 ^ L0 L1   # Edge error that flips both logicals
+/// ```
 fn parse_error_line(
     line: &str,
     dem: &mut ParsedDem,
@@ -214,6 +398,24 @@ fn parse_error_line(
     Ok(())
 }
 
+/// Parse a shift_detectors instruction.
+///
+/// This instruction shifts the coordinate system for subsequent detector
+/// declarations. The offset is cumulative.
+///
+/// # Formats
+///
+/// ```text
+/// shift_detectors(dx, dy, dt)   # Explicit coordinate shift
+/// shift_detectors N             # Compressed format (detector ID shift only)
+/// ```
+///
+/// The explicit format is used for coordinate-aware shifts. The compressed
+/// format appears in repeat blocks and only affects detector ID numbering,
+/// not spatial coordinates.
+///
+/// We only handle the explicit format for coordinate shifts. The compressed
+/// format is ignored (returns current offset unchanged).
 fn parse_shift_detectors(
     line: &str,
     current_offset: (f32, f32, f32),
@@ -243,6 +445,15 @@ fn parse_shift_detectors(
     }
 }
 
+/// Parse a comma-separated coordinate string like "1.5, 2.0, 3".
+///
+/// Returns (x, y, z) as f32. Missing components default to 0.0.
+///
+/// # Examples
+///
+/// - `"1, 2, 3"` → (1.0, 2.0, 3.0)
+/// - `"1.5, 2.5"` → (1.5, 2.5, 0.0)
+/// - `"1"` → (1.0, 0.0, 0.0)
 fn parse_coords(s: &str) -> Result<(f32, f32, f32), DemError> {
     let parts: Vec<&str> = s.split(',').map(|p| p.trim()).collect();
 
@@ -253,6 +464,10 @@ fn parse_coords(s: &str) -> Result<(f32, f32, f32), DemError> {
     Ok((x, y, z))
 }
 
+/// Extract logical observable ID from a "logical_observable `L<id>`" line.
+///
+/// This is used to track how many logical observables the DEM has.
+/// Returns the ID number if found, or None if not parseable.
 fn extract_observable_id(line: &str) -> Option<u8> {
     // Extract observable ID from "logical_observable L<id>"
     for token in line.split_whitespace() {

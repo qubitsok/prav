@@ -1,16 +1,75 @@
-//! Detector coordinate to Morton index mapping.
+//! # Detector Coordinate to Linear Index Mapping
+//!
+//! This module handles the translation between DEM detector coordinates
+//! and prav's internal linear indices.
+//!
+//! ## Why Mapping is Needed
+//!
+//! DEM files from Stim use detector IDs (D0, D1, D2, ...) and optional
+//! (x, y, t) coordinates. The prav decoder uses a stride-based linear
+//! index for fast memory access:
+//!
+//! ```text
+//! linear_index = t * stride_z + y * stride_y + x
+//! ```
+//!
+//! This mapping ensures syndromes from DEM files are correctly laid out
+//! for the decoder.
+//!
+//! ## Coordinate Systems
+//!
+//! ### DEM Coordinates
+//!
+//! ```text
+//! detector(x, y, t) D<id>
+//!
+//! x: Column position (0 to width-1)
+//! y: Row position (0 to height-1)
+//! t: Time/round (0 to depth-1)
+//! ```
+//!
+//! ### Prav Linear Index
+//!
+//! ```text
+//! For a 4x4x5 grid (distance-5 rotated surface code):
+//!
+//! stride_y = 4 (width, rounded up for alignment)
+//! stride_z = stride_y * 4 = 16
+//!
+//! Detector at (x=2, y=1, t=3):
+//! linear = 3*16 + 1*4 + 2 = 48 + 4 + 2 = 54
+//! ```
+//!
+//! ## Usage
+//!
+//! ```ignore
+//! let config = Grid3DConfig::for_rotated_surface(5);
+//! let mapper = DetectorMapper::new(&config);
+//!
+//! // Convert DEM syndrome to prav format
+//! let prav_syndrome = mapper.remap_syndrome(&dem_syndrome, &dem.detectors);
+//! ```
 
 use prav_core::{Detector, Grid3DConfig};
 
-/// Maps detector coordinates to prav's linear indices.
+/// Maps between DEM detector coordinates and prav linear indices.
 ///
-/// This handles the translation between DEM detector coordinates
-/// and the stride-based layout used by `DecodingState`.
+/// The mapper pre-computes stride values from the grid configuration
+/// for efficient coordinate conversion.
 pub struct DetectorMapper {
+    /// Grid width (number of columns).
     width: usize,
+
+    /// Grid height (number of rows).
     height: usize,
+
+    /// Grid depth (number of time steps/rounds).
     depth: usize,
+
+    /// Stride for Y dimension: linear += y * stride_y.
     stride_y: usize,
+
+    /// Stride for Z (time) dimension: linear += t * stride_z.
     stride_z: usize,
 }
 

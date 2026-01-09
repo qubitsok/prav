@@ -1,14 +1,85 @@
-//! Verification of decoder corrections.
+//! # Verification of Decoder Corrections
+//!
+//! This module verifies that the decoder's corrections are correct and
+//! tracks logical errors.
+//!
+//! ## What is Verification?
+//!
+//! After the decoder produces a set of corrections (edges to flip), we need
+//! to check two things:
+//!
+//! 1. **Defect Resolution**: Do the corrections resolve all triggered detectors?
+//! 2. **Logical Correctness**: Do the corrections preserve the logical qubit?
+//!
+//! ## How Verification Works
+//!
+//! ### Defect Resolution
+//!
+//! Each correction is an edge between two detectors (or a detector and boundary).
+//! Applying a correction XORs both endpoints:
+//!
+//! ```text
+//! Before:  ●──○──●──○      Correction: edge (0,2)
+//!          D0 D1 D2 D3
+//!
+//! After:   ○──○──○──○      D0 and D2 both flipped (XOR)
+//!          D0 D1 D2 D3
+//! ```
+//!
+//! If all defects become 0 after applying corrections, they're resolved.
+//!
+//! ### Logical Error Detection
+//!
+//! Boundary corrections can affect logical observables. We track which
+//! logical operators are flipped based on the stabilizer type at each
+//! boundary:
+//!
+//! ```text
+//! Stabilizer parity = (x + y) % 2
+//!
+//! Even parity → Z stabilizer → Z logical (bit 1)
+//! Odd parity  → X stabilizer → X logical (bit 0)
+//! ```
+//!
+//! The decoder's `predicted_logical` is compared with the ground truth
+//! `actual_logical` from syndrome generation. If they differ, it's a
+//! logical error.
+//!
+//! ## Example
+//!
+//! ```ignore
+//! let result = verify_with_logical(&syndrome, &corrections, &config);
+//!
+//! if !result.defects_resolved {
+//!     println!("Bug: decoder didn't resolve all defects!");
+//! }
+//!
+//! if result.predicted_logical != actual_logical {
+//!     println!("Logical error: decoder prediction doesn't match truth");
+//! }
+//! ```
 
 use prav_core::{EdgeCorrection, Grid3DConfig};
 
-/// Result of verification including logical error analysis.
+/// Result of verifying decoder corrections.
+///
+/// Contains both the defect resolution status and the predicted logical
+/// frame changes for comparison with ground truth.
 #[derive(Debug, Clone, Copy)]
 pub struct VerificationResult {
-    /// Whether all defects were resolved.
+    /// True if all defects were resolved by the corrections.
+    ///
+    /// This should always be true for a working decoder. If false,
+    /// there's a bug in the decoder.
     pub defects_resolved: bool,
+
     /// Predicted logical frame changes from boundary corrections.
-    /// bit 0 = X, bit 1 = Z
+    ///
+    /// - Bit 0 (0x01): X logical was flipped
+    /// - Bit 1 (0x02): Z logical was flipped
+    ///
+    /// Compare this with the ground truth from syndrome generation
+    /// to determine if a logical error occurred.
     pub predicted_logical: u8,
 }
 

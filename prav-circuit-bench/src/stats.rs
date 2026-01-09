@@ -1,32 +1,120 @@
-//! Statistics and percentile calculation utilities.
+//! # Statistics and Percentile Calculation Utilities
+//!
+//! This module provides statistical tools for analyzing benchmark results:
+//!
+//! - **ThresholdPoint**: Results for a single (distance, error_rate) configuration
+//! - **SuppressionFactor**: Lambda (Λ) calculation for threshold analysis
+//! - **LatencyStats**: Timing percentiles (p50, p95, p99)
+//! - **Wilson CI**: Confidence intervals for binomial proportions
+//!
+//! ## Key Metrics
+//!
+//! ### Logical Error Rate (LER)
+//!
+//! The fraction of decoding attempts that resulted in a logical error:
+//!
+//! ```text
+//! LER = logical_errors / (num_shots × num_rounds)
+//! ```
+//!
+//! We normalize by rounds because more rounds = more chances for error.
+//!
+//! ### Error Suppression Factor (Lambda, Λ)
+//!
+//! How much better a larger code performs compared to a smaller one:
+//!
+//! ```text
+//! Λ = LER(distance d) / LER(distance d+2)
+//! ```
+//!
+//! - **Λ > 1**: Larger code has lower LER → below threshold ✓
+//! - **Λ < 1**: Larger code has higher LER → above threshold ✗
+//! - **Λ = 1**: At threshold
+//!
+//! ### Confidence Intervals
+//!
+//! We use the Wilson score interval for binomial proportions. It's better
+//! than the normal approximation when the number of successes is small.
+//!
+//! For z = 1.96 (95% confidence):
+//!
+//! ```text
+//! center = (p + z²/2n) / (1 + z²/n)
+//! spread = z × sqrt((p(1-p) + z²/4n) / n) / (1 + z²/n)
+//! CI = [center - spread, center + spread]
+//! ```
 
 use std::time::Duration;
 
-/// Threshold study results for a single (distance, error_rate) point.
+/// Results from a single (distance, error_rate) benchmark configuration.
+///
+/// This is the primary output structure. It contains everything needed
+/// to analyze decoder performance at one point in parameter space.
+///
+/// ## Key Fields
+///
+/// - `ler_per_round`: The main metric - logical error rate normalized by rounds
+/// - `ler_ci_low`, `ler_ci_high`: 95% confidence interval for the LER
+/// - `decode_time_us`: Average decoding latency in microseconds
+///
+/// ## Usage
+///
+/// ```ignore
+/// let point = ThresholdPoint::new(5, 0.003, 10000, 5, 100, 0.15);
+///
+/// println!("d={} p={:.4}: LER={:.2e} [{:.2e},{:.2e}]",
+///     point.distance,
+///     point.physical_error_rate,
+///     point.ler_per_round,
+///     point.ler_ci_low,
+///     point.ler_ci_high);
+/// ```
 #[derive(Debug, Clone)]
 pub struct ThresholdPoint {
-    /// Code distance.
+    /// Code distance (d). Determines grid size: (d-1) × (d-1) × d.
     pub distance: usize,
-    /// Physical error rate.
+
+    /// Physical error rate (p). The per-gate or per-timestep error probability.
     pub physical_error_rate: f64,
-    /// Number of shots sampled.
+
+    /// Number of syndrome samples processed.
     pub num_shots: usize,
-    /// Number of syndrome rounds.
+
+    /// Number of measurement rounds per shot (usually equals distance).
     pub num_rounds: usize,
-    /// Number of logical errors observed.
+
+    /// Number of logical errors observed (predicted != actual).
     pub logical_errors: usize,
-    /// Logical error rate per round: errors / (shots × rounds).
+
+    /// Logical error rate per round: `errors / (shots × rounds)`.
+    /// This normalization allows comparison across different round counts.
     pub ler_per_round: f64,
-    /// 95% confidence interval lower bound.
+
+    /// Lower bound of 95% Wilson confidence interval for LER.
     pub ler_ci_low: f64,
-    /// 95% confidence interval upper bound.
+
+    /// Upper bound of 95% Wilson confidence interval for LER.
     pub ler_ci_high: f64,
-    /// Average decode time in microseconds.
+
+    /// Average decoding time in microseconds.
     pub decode_time_us: f64,
 }
 
 impl ThresholdPoint {
-    /// Create a new threshold point from raw results.
+    /// Create a new threshold point from raw benchmark results.
+    ///
+    /// Automatically computes:
+    /// - LER per round = logical_errors / (num_shots × num_rounds)
+    /// - 95% Wilson confidence interval for the LER
+    ///
+    /// # Parameters
+    ///
+    /// - `distance`: Code distance
+    /// - `physical_error_rate`: Error rate being tested
+    /// - `num_shots`: Number of syndrome samples
+    /// - `num_rounds`: Rounds per shot
+    /// - `logical_errors`: Number of logical errors observed
+    /// - `decode_time_us`: Average decode time in microseconds
     pub fn new(
         distance: usize,
         physical_error_rate: f64,
@@ -76,23 +164,66 @@ impl ThresholdPoint {
     }
 }
 
-/// Error suppression factor Λ between two code distances.
+/// Error suppression factor Lambda (Λ) between two code distances.
+///
+/// Lambda measures how much error suppression we get from increasing
+/// the code distance. It's the key metric for threshold analysis.
+///
+/// ## Interpretation
+///
+/// - **Λ > 1**: Error rate decreased → below threshold (good!)
+/// - **Λ < 1**: Error rate increased → above threshold (bad!)
+/// - **Λ = 1**: At threshold
+///
+/// ## Calculation
+///
+/// ```text
+/// Λ = LER(d_low) / LER(d_high)
+/// ```
+///
+/// For surface codes, Λ should be approximately constant below threshold,
+/// with Λ ≈ exp((d_high - d_low) / ξ) where ξ is the correlation length.
+///
+/// ## Error Propagation
+///
+/// We propagate uncertainty using the standard formula for ratios:
+///
+/// ```text
+/// δΛ/Λ = sqrt((δε_low/ε_low)² + (δε_high/ε_high)²)
+/// ```
 #[derive(Debug, Clone)]
 pub struct SuppressionFactor {
-    /// Lower code distance.
+    /// Lower code distance in the comparison.
     pub d_low: usize,
-    /// Higher code distance.
+
+    /// Higher code distance in the comparison.
     pub d_high: usize,
-    /// Physical error rate.
+
+    /// Physical error rate at which Lambda was computed.
     pub physical_error_rate: f64,
-    /// Lambda = ε_d_low / ε_d_high.
+
+    /// Lambda value: LER(d_low) / LER(d_high).
+    /// Values > 1 indicate error suppression.
     pub lambda: f64,
-    /// Propagated uncertainty in lambda.
+
+    /// Uncertainty in lambda from error propagation.
     pub lambda_err: f64,
 }
 
 impl SuppressionFactor {
-    /// Compute Λ from two threshold points at adjacent distances.
+    /// Compute Lambda from two threshold points at adjacent distances.
+    ///
+    /// Returns `None` if either LER is zero (can't divide by zero).
+    ///
+    /// # Parameters
+    ///
+    /// - `low`: Results from the smaller code distance
+    /// - `high`: Results from the larger code distance
+    ///
+    /// # Returns
+    ///
+    /// `Some(SuppressionFactor)` with computed lambda and uncertainty,
+    /// or `None` if computation is not possible.
     pub fn from_points(low: &ThresholdPoint, high: &ThresholdPoint) -> Option<Self> {
         if low.ler_per_round <= 0.0 || high.ler_per_round <= 0.0 {
             return None;
@@ -116,11 +247,39 @@ impl SuppressionFactor {
     }
 }
 
-/// Wilson score interval for binomial proportion.
+/// Wilson score confidence interval for binomial proportions.
 ///
-/// Returns (lower, upper) bounds for the true probability given
-/// observed successes out of trials, at confidence level z.
-/// z = 1.96 for 95% CI, z = 2.576 for 99% CI.
+/// This is a better alternative to the normal approximation, especially
+/// when the number of successes is small or close to 0 or trials.
+///
+/// # Formula
+///
+/// ```text
+/// p̂ = successes / trials
+/// center = (p̂ + z²/2n) / (1 + z²/n)
+/// spread = z × sqrt((p̂(1-p̂) + z²/4n) / n) / (1 + z²/n)
+/// CI = [center - spread, center + spread]
+/// ```
+///
+/// # Parameters
+///
+/// - `successes`: Number of positive outcomes (logical errors)
+/// - `trials`: Total number of attempts (shots × rounds)
+/// - `z`: Z-score for desired confidence level
+///   - z = 1.96 → 95% confidence
+///   - z = 2.576 → 99% confidence
+///
+/// # Returns
+///
+/// (lower, upper) bounds for the true probability. Clamped to [0, 1].
+///
+/// # Example
+///
+/// ```ignore
+/// // 50 errors out of 10,000 trials, 95% CI
+/// let (low, high) = wilson_ci(50, 10000, 1.96);
+/// // low ≈ 0.0037, high ≈ 0.0065
+/// ```
 pub fn wilson_ci(successes: usize, trials: usize, z: f64) -> (f64, f64) {
     if trials == 0 {
         return (0.0, 1.0);
@@ -138,20 +297,51 @@ pub fn wilson_ci(successes: usize, trials: usize, z: f64) -> (f64, f64) {
 }
 
 /// CSV header for threshold study output.
+///
+/// Columns: distance, physical_p, rounds, shots, logical_errors,
+/// ler_per_round, ler_ci_low, ler_ci_high, decode_us
 pub const CSV_HEADER: &str = "distance,physical_p,rounds,shots,logical_errors,ler_per_round,ler_ci_low,ler_ci_high,decode_us";
 
-/// Latency statistics in microseconds.
+/// Latency statistics for decoding performance analysis.
+///
+/// Contains common percentiles useful for understanding decoder performance:
+/// - Average and extremes (avg, min, max)
+/// - Percentiles for tail latency (p50, p95, p99)
+///
+/// All values are in microseconds (µs).
 #[derive(Debug, Clone)]
 pub struct LatencyStats {
+    /// Average (mean) decode time in microseconds.
     pub avg_us: f64,
+
+    /// Minimum decode time observed.
     pub min_us: f64,
+
+    /// Maximum decode time observed.
     pub max_us: f64,
+
+    /// Median (50th percentile) decode time.
     pub p50_us: f64,
+
+    /// 95th percentile decode time (tail latency).
     pub p95_us: f64,
+
+    /// 99th percentile decode time (extreme tail).
     pub p99_us: f64,
 }
 
-/// Calculate percentile statistics from a list of durations.
+/// Calculate latency statistics from a list of decode times.
+///
+/// Computes average, min, max, and percentiles (p50, p95, p99).
+///
+/// # Parameters
+///
+/// - `times`: Vector of decode durations
+///
+/// # Returns
+///
+/// `LatencyStats` with all times converted to microseconds.
+/// Returns all zeros if `times` is empty.
 pub fn calculate_percentiles(times: &[Duration]) -> LatencyStats {
     if times.is_empty() {
         return LatencyStats {

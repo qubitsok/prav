@@ -1,20 +1,69 @@
-//! 3D Circuit-Level Benchmark for prav Union-Find QEC Decoder
+//! # 3D Circuit-Level Benchmark for prav Union-Find QEC Decoder
 //!
-//! This benchmark tests the prav decoder on 3D space-time decoding problems
-//! generated from Stim Detector Error Models (DEM) or phenomenological noise.
+//! This benchmark tests the **prav** decoder on 3D space-time decoding problems.
+//! It measures how often the decoder makes logical errors and how fast it runs.
 //!
-//! # Usage
+//! ## What This Tool Does
+//!
+//! 1. **Generates syndromes**: Creates noisy measurement patterns that a real
+//!    quantum computer would produce. Two sources are supported:
+//!    - Phenomenological noise (built-in, simplified model)
+//!    - Stim DEM files (realistic circuit-level noise)
+//!
+//! 2. **Runs the decoder**: The prav Union-Find decoder processes each syndrome
+//!    and produces a set of corrections (edges to flip).
+//!
+//! 3. **Verifies correctness**: Applies the corrections and checks that all
+//!    detector triggers are resolved.
+//!
+//! 4. **Tracks logical errors**: Compares the decoder's predicted logical frame
+//!    with the ground truth to detect logical errors.
+//!
+//! 5. **Computes statistics**: Calculates logical error rate (LER), confidence
+//!    intervals, error suppression factor (Lambda), and latency percentiles.
+//!
+//! ## Key Concepts
+//!
+//! - **Syndrome**: The pattern of triggered detectors. Each detector corresponds
+//!   to a stabilizer measurement at a specific (x, y, t) coordinate.
+//!
+//! - **Logical error**: When the decoder's correction changes the logical qubit
+//!   state. The syndrome is resolved, but the quantum information is corrupted.
+//!
+//! - **Threshold**: The physical error rate below which larger codes perform
+//!   better. Measured by the error suppression factor Lambda (Λ).
+//!
+//! - **Lambda (Λ)**: Ratio of logical error rates between adjacent code distances.
+//!   Λ > 1 means we're below threshold (good). Λ < 1 means above threshold (bad).
+//!
+//! ## Usage Examples
 //!
 //! ```bash
-//! # Run with default settings
+//! # Run with default settings (phenomenological noise)
 //! cargo run --release -p prav-circuit-bench
 //!
-//! # Run with DEM file
+//! # Run with a single Stim DEM file
 //! cargo run --release -p prav-circuit-bench -- --dem path/to/model.dem
 //!
-//! # Run with specific distances
-//! cargo run --release -p prav-circuit-bench -- --distances 3,5,7
+//! # Run batch threshold study with directory of DEM files
+//! cargo run --release -p prav-circuit-bench -- --dem-dir dems/
+//!
+//! # Specify distances and shots
+//! cargo run --release -p prav-circuit-bench -- --distances 3,5,7,9 --shots 50000
+//!
+//! # Output CSV for analysis
+//! cargo run --release -p prav-circuit-bench -- --csv > results.csv
 //! ```
+//!
+//! ## Output Interpretation
+//!
+//! The benchmark outputs for each (distance, error_rate) configuration:
+//! - `LER`: Logical error rate per round with 95% confidence interval
+//! - `n`: Number of shots sampled
+//! - `t`: Average decode time in microseconds
+//!
+//! The Lambda table shows error suppression between adjacent distances.
+//! Look for Λ > 1 to confirm you're below threshold.
 
 // Work-in-progress: infrastructure for future benchmarking features
 #![allow(dead_code, unused_imports)]
@@ -40,75 +89,180 @@ use crate::surface_code::DetectorMapper;
 use crate::syndrome::{CircuitSampler, SyndromeWithLogical, generate_correlated_syndromes};
 use crate::verification::verify_with_logical;
 
+/// Command-line arguments for the benchmark.
+///
+/// The benchmark supports multiple modes of operation:
+///
+/// 1. **Phenomenological mode** (default): Uses a built-in simplified noise model.
+///    Good for quick tests but not accurate for threshold estimation.
+///
+/// 2. **Single DEM mode** (`--dem`): Load a specific Stim DEM file.
+///    Useful for testing a particular circuit configuration.
+///
+/// 3. **Batch DEM mode** (`--dem-dir`): Process all DEM files in a directory.
+///    Best for comprehensive threshold studies.
+///
+/// # Examples
+///
+/// ```bash
+/// # Default phenomenological mode
+/// prav-circuit-bench
+///
+/// # Batch DEM mode with CSV output
+/// prav-circuit-bench --dem-dir dems/ --csv > results.csv
+/// ```
 #[derive(Parser, Debug)]
 #[command(name = "prav-circuit-bench")]
 #[command(about = "3D circuit-level benchmark for prav Union-Find QEC decoder")]
 struct Args {
-    /// Path to Stim DEM file (optional, uses phenomenological if not provided)
+    /// Path to a single Stim DEM file.
+    ///
+    /// When provided, syndromes are sampled from this DEM instead of
+    /// using the phenomenological noise model. The DEM specifies the
+    /// error mechanisms and their probabilities.
     #[arg(long)]
     dem: Option<PathBuf>,
 
-    /// Directory containing Stim DEM files (runs batch threshold study)
-    /// DEM filenames should match pattern: surface_d{distance}_r{rounds}_p{noise}.dem
+    /// Directory containing Stim DEM files for batch processing.
+    ///
+    /// The tool will scan this directory for files matching the pattern:
+    /// `surface_d{distance}_r{rounds}_p{noise}.dem`
+    ///
+    /// This is the recommended mode for threshold studies - it processes
+    /// multiple distances and error rates in one run.
     #[arg(long)]
     dem_dir: Option<PathBuf>,
 
-    /// Number of shots per configuration
+    /// Number of syndrome samples ("shots") per configuration.
+    ///
+    /// More shots = better statistics but longer runtime.
+    /// For rough estimates: 1,000-10,000 shots.
+    /// For publication: 100,000+ shots.
     #[arg(long, default_value_t = 10000)]
     shots: usize,
 
-    /// Code distances to benchmark (comma-separated)
+    /// Code distances to benchmark (comma-separated).
+    ///
+    /// The code distance d determines the grid size: (d-1) x (d-1) x d.
+    /// Larger distances provide better error protection but require more
+    /// qubits and are slower to decode.
+    ///
+    /// Common choices: 3, 5, 7, 9, 11, 13
     #[arg(long, value_delimiter = ',', default_values_t = vec![3, 5, 7])]
     distances: Vec<usize>,
 
-    /// Error probabilities to test (comma-separated)
+    /// Physical error rates to test (comma-separated).
+    ///
+    /// These are the per-gate or per-timestep error probabilities.
+    /// The threshold for surface codes is around 0.5-1%.
+    ///
+    /// For threshold studies, use values around 0.1% to 1%.
     #[arg(long, value_delimiter = ',')]
     error_probs: Option<Vec<f64>>,
 
-    /// Random seed
+    /// Random seed for reproducibility.
+    ///
+    /// The same seed produces the same syndrome samples, making
+    /// results reproducible across runs.
     #[arg(long, default_value_t = 42)]
     seed: u64,
 
-    /// Skip verification (faster but no correctness check)
+    /// Skip correction verification.
+    ///
+    /// When set, the benchmark does not verify that corrections
+    /// actually resolve all defects. Faster, but you lose the
+    /// correctness check.
     #[arg(long)]
     no_verify: bool,
 
-    /// Output results as CSV to stdout
+    /// Output results in CSV format.
+    ///
+    /// CSV output goes to stdout. Progress messages go to stderr.
+    /// Use shell redirection to save: `--csv > results.csv`
     #[arg(long)]
     csv: bool,
 
-    /// Run threshold study mode (denser error rate sweep, more distances)
+    /// Enable threshold study mode.
+    ///
+    /// Uses a denser grid of error rates around the expected
+    /// threshold (0.2% to 1.0%) and more distances by default.
     #[arg(long)]
     threshold_study: bool,
 
-    /// Minimum logical errors before stopping (adaptive sampling)
+    /// Minimum logical errors required per data point.
+    ///
+    /// Used for adaptive sampling: keep sampling until we observe
+    /// at least this many logical errors. Ensures statistical
+    /// significance for low-error-rate configurations.
     #[arg(long, default_value_t = 100)]
     min_errors: usize,
 
-    /// Maximum shots per data point
+    /// Maximum shots per data point.
+    ///
+    /// Upper limit on sampling even if min_errors hasn't been reached.
+    /// Prevents infinite loops for very low error rates.
     #[arg(long, default_value_t = 1_000_000)]
     max_shots: usize,
 }
 
-/// Error rates for threshold study (denser around expected threshold ~0.5%)
+/// Error rates for threshold study mode.
+///
+/// These values are clustered around the expected threshold (~0.5-1%) for
+/// surface codes with circuit-level noise. The denser sampling helps
+/// pinpoint the exact threshold location.
 const THRESHOLD_STUDY_PROBS: &[f64] = &[
     0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.010,
 ];
 
-/// Default distances for threshold study
+/// Default distances for threshold study mode.
+///
+/// These provide good coverage for determining threshold behavior.
+/// Distance 3 is the minimum meaningful surface code.
+/// Distance 9 is large enough to show clear threshold crossing.
 const THRESHOLD_STUDY_DISTANCES: &[usize] = &[3, 5, 7, 9];
 
-/// Results from a single benchmark run.
+/// Results from benchmarking a batch of syndrome samples.
+///
+/// This struct collects all the metrics we care about:
+/// - **times**: How long each decode took (for latency statistics)
+/// - **verified**: How many corrections passed verification
+/// - **logical_errors**: How many times the decoder made a logical error
+///
+/// From these, we compute LER, Lambda, and latency percentiles.
 struct BenchmarkResults {
+    /// Decode time for each shot. Used to compute latency percentiles.
     times: Vec<Duration>,
+
+    /// Number of shots where verification passed (all defects resolved).
+    /// Should equal total_shots if decoder is working correctly.
     verified: usize,
+
+    /// Total number of syndrome samples processed.
     total_shots: usize,
+
+    /// Total number of defects across all samples.
+    /// Useful for debugging and understanding error density.
     total_defects: usize,
+
+    /// Total number of edge corrections returned by the decoder.
     total_corrections: usize,
-    /// Number of logical errors (predicted != actual)
+
+    /// Number of logical errors: shots where predicted_logical != actual_logical.
+    /// This is the key metric. LER = logical_errors / (total_shots * rounds).
     logical_errors: usize,
 }
 
+/// Warm up the decoder to get stable timing measurements.
+///
+/// Modern CPUs have caches, branch predictors, and other features that
+/// make the first few operations slower than steady-state. We run 200
+/// warmup decodes to ensure subsequent timing measurements are accurate.
+///
+/// # Parameters
+///
+/// - `decoder`: The prav decoder instance to warm up
+/// - `samples`: Syndrome samples to use for warmup
+/// - `max_corrections`: Size of the corrections buffer
 fn warmup_decoder(
     decoder: &mut DynDecoder<Grid3D>,
     samples: &[SyndromeWithLogical],
@@ -122,6 +276,28 @@ fn warmup_decoder(
     }
 }
 
+/// Run the core benchmark loop for a batch of syndrome samples.
+///
+/// This is where the actual decoding and measurement happens:
+///
+/// 1. Create a prav decoder for the given grid configuration
+/// 2. Warm up the decoder (200 iterations)
+/// 3. For each syndrome sample:
+///    - Load the syndrome into the decoder
+///    - Time the decode() call
+///    - Optionally verify corrections
+///    - Track logical errors
+///
+/// # Parameters
+///
+/// - `config`: Grid dimensions (width, height, depth) and layout info
+/// - `samples`: Syndrome samples with ground-truth logical flips
+/// - `verify`: Whether to verify that corrections resolve all defects
+///
+/// # Returns
+///
+/// A `BenchmarkResults` struct with timing data, verification counts,
+/// and logical error counts.
 fn benchmark_3d_circuit(
     config: &Grid3DConfig,
     samples: &[SyndromeWithLogical],
@@ -192,6 +368,20 @@ fn benchmark_3d_circuit(
     }
 }
 
+/// Get the grid configuration for a given code distance.
+///
+/// For common distances (3, 5, 7, 11, 17, 21), we use pre-defined
+/// configurations from `TestGrids3D`. For other distances, we
+/// compute the configuration dynamically.
+///
+/// # Grid Dimensions for Rotated Surface Codes
+///
+/// For a distance-d rotated surface code:
+/// - Width = d - 1 (number of X/Z stabilizers per row)
+/// - Height = d - 1 (number of rows)
+/// - Depth = d (number of measurement rounds, typically equals distance)
+///
+/// For example, d=5 gives a 4x4x5 detector grid.
 fn get_config_for_distance(d: usize) -> Grid3DConfig {
     match d {
         3 => TestGrids3D::D3,
@@ -204,17 +394,45 @@ fn get_config_for_distance(d: usize) -> Grid3DConfig {
     }
 }
 
-/// Parsed DEM file info extracted from filename.
+/// Information extracted from a DEM filename.
+///
+/// Our DEM files follow the naming convention:
+/// `surface_d{distance}_r{rounds}_p{noise}.dem`
+///
+/// For example: `surface_d5_r5_p0.0030.dem`
+/// - distance = 5
+/// - rounds = 5
+/// - noise_level = 0.003 (0.3%)
+///
+/// This struct holds the parsed values plus the file path.
 #[derive(Debug, Clone)]
 struct DemFileInfo {
+    /// Full path to the DEM file.
     path: PathBuf,
+
+    /// Code distance (d). Determines grid size.
     distance: usize,
+
+    /// Number of measurement rounds (r). Usually equals distance.
     rounds: usize,
+
+    /// Physical error rate (p). Probability of each error mechanism.
     noise_level: f64,
 }
 
-/// Parse DEM filename to extract distance, rounds, and noise level.
-/// Expected format: surface_d{distance}_r{rounds}_p{noise}.dem
+/// Parse a DEM filename to extract configuration parameters.
+///
+/// Expected filename format: `surface_d{distance}_r{rounds}_p{noise}.dem`
+///
+/// # Examples
+///
+/// - `surface_d5_r5_p0.0030.dem` → distance=5, rounds=5, noise=0.003
+/// - `surface_d7_r7_p0.0100.dem` → distance=7, rounds=7, noise=0.01
+///
+/// # Returns
+///
+/// `Some(DemFileInfo)` if parsing succeeded, `None` if the filename
+/// doesn't match the expected pattern.
 fn parse_dem_filename(path: &PathBuf) -> Option<DemFileInfo> {
     let filename = path.file_stem()?.to_str()?;
 
@@ -243,7 +461,13 @@ fn parse_dem_filename(path: &PathBuf) -> Option<DemFileInfo> {
     })
 }
 
-/// Scan a directory for DEM files and return sorted info.
+/// Scan a directory for DEM files and return sorted information.
+///
+/// Finds all `.dem` files in the directory, parses their filenames,
+/// and returns them sorted by (distance, noise_level). This ordering
+/// makes the output easier to read and analyze.
+///
+/// Files that don't match the expected naming pattern are silently skipped.
 fn scan_dem_directory(dir: &PathBuf) -> Vec<DemFileInfo> {
     let mut files = Vec::new();
 
@@ -268,7 +492,29 @@ fn scan_dem_directory(dir: &PathBuf) -> Vec<DemFileInfo> {
     files
 }
 
-/// Run threshold study using DEM files from a directory.
+/// Run a batch threshold study using DEM files from a directory.
+///
+/// This is the main entry point for realistic threshold studies. It:
+///
+/// 1. Iterates through all DEM files, grouped by distance
+/// 2. For each DEM file:
+///    - Parses the DEM to extract error mechanisms
+///    - Samples syndromes using Monte Carlo simulation
+///    - Remaps detector coordinates to prav's layout
+///    - Runs the decoder and measures performance
+/// 3. Collects results into `ThresholdPoint` structures
+///
+/// # Parameters
+///
+/// - `dem_files`: List of DEM file info, pre-sorted by (distance, noise_level)
+/// - `shots`: Number of syndrome samples per DEM file
+/// - `seed`: Random seed for reproducibility
+/// - `no_verify`: Skip verification if true
+/// - `csv`: Output CSV format if true
+///
+/// # Returns
+///
+/// A vector of `ThresholdPoint` results, one per DEM file.
 fn run_dem_directory_benchmark(
     dem_files: &[DemFileInfo],
     shots: usize,
@@ -530,7 +776,33 @@ fn main() {
     print_info("Benchmark complete.");
 }
 
-/// Print Lambda suppression factor table.
+/// Print the Lambda (error suppression factor) table.
+///
+/// Lambda (Λ) is the key metric for threshold analysis. It shows how much
+/// better a larger code performs compared to a smaller one:
+///
+/// ```text
+/// Λ = LER(d) / LER(d+2)
+/// ```
+///
+/// - **Λ > 1**: Larger code is better → below threshold ✓
+/// - **Λ < 1**: Larger code is worse → above threshold ✗
+/// - **Λ = 1**: At threshold
+///
+/// The table shows Λ for each pair of adjacent distances at each error rate.
+/// The threshold is where Λ crosses 1.0.
+///
+/// # Example Output
+///
+/// ```text
+/// Error Suppression Factor Λ (= ε_d / ε_{d+2}):
+///
+///        p      Λ(3→5)       Λ(5→7)
+/// ---------------------------------
+///   0.0010  5.20±1.10   4.80±0.95
+///   0.0030  2.15±0.42   1.95±0.38
+///   0.0050  1.32±0.25   1.15±0.22
+/// ```
 fn print_lambda_table(points: &[ThresholdPoint], distances: &[usize], error_probs: &[f64]) {
     println!("Error Suppression Factor Λ (= ε_d / ε_{{d+2}}):");
     println!();
