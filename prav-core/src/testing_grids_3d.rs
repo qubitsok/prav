@@ -22,6 +22,8 @@
 //! assert_eq!(config.num_rounds, 5);
 //! ```
 
+use crate::decoder::types::BoundaryConfig;
+
 /// Type of surface code layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceCodeType {
@@ -56,6 +58,9 @@ pub struct Grid3DConfig {
     pub stride_z: usize,
     /// Surface code type.
     pub code_type: SurfaceCodeType,
+    /// Boundary configuration for matching.
+    /// Defaults to `All` for unified X+Z decoding.
+    pub boundary_config: BoundaryConfig,
 }
 
 impl Grid3DConfig {
@@ -82,6 +87,7 @@ impl Grid3DConfig {
             stride_y,
             stride_z,
             code_type: SurfaceCodeType::RotatedSurface,
+            boundary_config: BoundaryConfig::all_boundaries(),
         }
     }
 
@@ -106,6 +112,7 @@ impl Grid3DConfig {
             stride_y,
             stride_z,
             code_type: SurfaceCodeType::UnrotatedPlanar,
+            boundary_config: BoundaryConfig::all_boundaries(),
         }
     }
 
@@ -125,6 +132,103 @@ impl Grid3DConfig {
             stride_y,
             stride_z,
             code_type: SurfaceCodeType::RotatedSurface,
+            boundary_config: BoundaryConfig::all_boundaries(),
+        }
+    }
+
+    /// Create a 3D config for X-type stabilizer decoding (compact reindexed).
+    ///
+    /// For a rotated surface code of distance `d`:
+    /// - X stabilizers are at positions where `(x + y) % 2 == 0`
+    /// - Grid is compacted to `(d-1)/2 × (d-1) × depth`
+    /// - Only top/bottom boundaries are active (for X logical observable)
+    ///
+    /// # Arguments
+    /// * `d` - Code distance
+    /// * `depth` - Number of measurement rounds (use 1 for 2D mode)
+    #[must_use]
+    pub const fn for_x_stabilizers(d: usize, depth: usize) -> Self {
+        let grid_size = if d > 1 { d - 1 } else { 1 };
+        // Compact width: half the columns (X detectors per row)
+        let compact_width = if grid_size > 1 { grid_size / 2 } else { 1 };
+        let compact_height = grid_size;
+
+        let max_dim = max3(compact_width, compact_height, depth);
+        let stride_y = next_power_of_two(max_dim);
+        let stride_z = stride_y * stride_y;
+
+        Self {
+            code_distance: d,
+            num_rounds: depth,
+            width: compact_width,
+            height: compact_height,
+            depth,
+            stride_y,
+            stride_z,
+            code_type: SurfaceCodeType::RotatedSurface,
+            boundary_config: BoundaryConfig::horizontal_only(),
+        }
+    }
+
+    /// Create a 3D config for Z-type stabilizer decoding (compact reindexed).
+    ///
+    /// For a rotated surface code of distance `d`:
+    /// - Z stabilizers are at positions where `(x + y) % 2 == 1`
+    /// - Grid is compacted to `(d-1)/2 × (d-1) × depth`
+    /// - Coordinates are rotated so left/right boundaries become top/bottom
+    /// - Uses horizontal boundary config after rotation
+    ///
+    /// # Arguments
+    /// * `d` - Code distance
+    /// * `depth` - Number of measurement rounds (use 1 for 2D mode)
+    #[must_use]
+    pub const fn for_z_stabilizers(d: usize, depth: usize) -> Self {
+        let grid_size = if d > 1 { d - 1 } else { 1 };
+        // Compact width: half the columns (Z detectors per row)
+        // After coordinate rotation, the grid dimensions are swapped
+        let compact_width = if grid_size > 1 { grid_size / 2 } else { 1 };
+        let compact_height = grid_size;
+
+        let max_dim = max3(compact_width, compact_height, depth);
+        let stride_y = next_power_of_two(max_dim);
+        let stride_z = stride_y * stride_y;
+
+        Self {
+            code_distance: d,
+            num_rounds: depth,
+            width: compact_width,
+            height: compact_height,
+            depth,
+            stride_y,
+            stride_z,
+            code_type: SurfaceCodeType::RotatedSurface,
+            // After coordinate rotation, left/right becomes top/bottom
+            boundary_config: BoundaryConfig::horizontal_only(),
+        }
+    }
+
+    /// Returns a copy with a different boundary configuration.
+    #[must_use]
+    pub const fn with_boundary_config(self, boundary_config: BoundaryConfig) -> Self {
+        Self {
+            boundary_config,
+            ..self
+        }
+    }
+
+    /// Returns a copy with a different depth (for 2D mode).
+    #[must_use]
+    pub const fn with_depth(self, depth: usize) -> Self {
+        let max_dim = max3(self.width, self.height, depth);
+        let stride_y = next_power_of_two(max_dim);
+        let stride_z = stride_y * stride_y;
+
+        Self {
+            depth,
+            num_rounds: depth,
+            stride_y,
+            stride_z,
+            ..self
         }
     }
 
@@ -132,6 +236,22 @@ impl Grid3DConfig {
     #[must_use]
     pub const fn num_detectors(&self) -> usize {
         self.width * self.height * self.depth
+    }
+
+    /// Check if a position is on the boundary according to boundary_config.
+    ///
+    /// For split X/Z decoding, this determines which edges are valid
+    /// matching targets for clusters.
+    #[must_use]
+    #[inline(always)]
+    pub const fn is_boundary(&self, x: usize, y: usize) -> bool {
+        self.boundary_config.is_boundary(x, y, self.width, self.height)
+    }
+
+    /// Number of detectors per measurement round in this configuration.
+    #[must_use]
+    pub const fn detectors_per_round(&self) -> usize {
+        self.width * self.height
     }
 
     /// Total allocated nodes (including padding for Morton alignment).
@@ -373,6 +493,131 @@ mod tests {
         assert_eq!(defaults.len(), 3);
         assert_eq!(defaults[0].code_distance, 3);
         assert_eq!(defaults[2].code_distance, 7);
+    }
+
+    #[test]
+    fn test_x_stabilizer_config_d5() {
+        let config = Grid3DConfig::for_x_stabilizers(5, 5);
+        assert_eq!(config.code_distance, 5);
+        // d=5: grid_size=4, compact_width=2, height=4
+        assert_eq!(config.width, 2);
+        assert_eq!(config.height, 4);
+        assert_eq!(config.depth, 5);
+        // X uses horizontal boundaries (top/bottom only)
+        assert!(config.boundary_config.check_top);
+        assert!(config.boundary_config.check_bottom);
+        assert!(!config.boundary_config.check_left);
+        assert!(!config.boundary_config.check_right);
+        // 2x4x5 = 40 detectors (half of original 4x4x5=80)
+        assert_eq!(config.num_detectors(), 40);
+    }
+
+    #[test]
+    fn test_z_stabilizer_config_d5() {
+        let config = Grid3DConfig::for_z_stabilizers(5, 5);
+        assert_eq!(config.code_distance, 5);
+        // Same dimensions as X (symmetric for even grid_size)
+        assert_eq!(config.width, 2);
+        assert_eq!(config.height, 4);
+        assert_eq!(config.depth, 5);
+        // Z uses horizontal after rotation (left/right -> top/bottom)
+        assert!(config.boundary_config.check_top);
+        assert!(config.boundary_config.check_bottom);
+        assert_eq!(config.num_detectors(), 40);
+    }
+
+    #[test]
+    fn test_x_stabilizer_2d_mode() {
+        // 2D mode: depth=1
+        let config = Grid3DConfig::for_x_stabilizers(5, 1);
+        assert_eq!(config.depth, 1);
+        assert_eq!(config.num_rounds, 1);
+        // 2x4x1 = 8 detectors
+        assert_eq!(config.num_detectors(), 8);
+    }
+
+    #[test]
+    fn test_boundary_config_all() {
+        let config = Grid3DConfig::for_rotated_surface(5);
+        // All boundaries enabled
+        assert!(config.boundary_config.check_top);
+        assert!(config.boundary_config.check_bottom);
+        assert!(config.boundary_config.check_left);
+        assert!(config.boundary_config.check_right);
+
+        // 4x4 grid: corners and edges are boundaries
+        assert!(config.is_boundary(0, 0));  // corner
+        assert!(config.is_boundary(3, 0));  // bottom-right
+        assert!(config.is_boundary(0, 3));  // top-left
+        assert!(config.is_boundary(3, 3));  // top-right
+        assert!(config.is_boundary(1, 0));  // bottom edge
+        assert!(config.is_boundary(0, 2));  // left edge
+        assert!(!config.is_boundary(1, 1)); // interior
+        assert!(!config.is_boundary(2, 2)); // interior
+    }
+
+    #[test]
+    fn test_boundary_config_horizontal() {
+        let config = Grid3DConfig::for_x_stabilizers(5, 5);
+        // Horizontal boundaries only
+        assert!(config.boundary_config.check_top);
+        assert!(config.boundary_config.check_bottom);
+        assert!(!config.boundary_config.check_left);
+        assert!(!config.boundary_config.check_right);
+
+        // 2x4 compact grid: only y=0 and y=3 are boundaries
+        assert!(config.is_boundary(0, 0));  // bottom edge
+        assert!(config.is_boundary(1, 0));  // bottom edge
+        assert!(config.is_boundary(0, 3));  // top edge
+        assert!(config.is_boundary(1, 3));  // top edge
+        assert!(!config.is_boundary(0, 1)); // left edge but NOT boundary for Horizontal
+        assert!(!config.is_boundary(0, 2)); // left edge but NOT boundary
+        assert!(!config.is_boundary(1, 1)); // interior
+    }
+
+    #[test]
+    fn test_boundary_config_vertical() {
+        let config = Grid3DConfig::custom(4, 4, 1)
+            .with_boundary_config(BoundaryConfig::vertical_only());
+
+        // Only x=0 and x=3 are boundaries
+        assert!(config.is_boundary(0, 0));  // left edge
+        assert!(config.is_boundary(0, 2));  // left edge
+        assert!(config.is_boundary(3, 1));  // right edge
+        assert!(config.is_boundary(3, 3));  // right edge
+        assert!(!config.is_boundary(1, 0)); // bottom edge but NOT boundary for Vertical
+        assert!(!config.is_boundary(2, 3)); // top edge but NOT boundary
+        assert!(!config.is_boundary(1, 1)); // interior
+    }
+
+    #[test]
+    fn test_with_depth() {
+        let config_3d = Grid3DConfig::for_rotated_surface(5);
+        assert_eq!(config_3d.depth, 5);
+
+        let config_2d = config_3d.with_depth(1);
+        assert_eq!(config_2d.depth, 1);
+        assert_eq!(config_2d.num_rounds, 1);
+        assert_eq!(config_2d.width, 4);  // spatial dims unchanged
+        assert_eq!(config_2d.height, 4);
+        assert!(config_2d.stride_y.is_power_of_two());
+    }
+
+    #[test]
+    fn test_x_z_stabilizer_detector_counts() {
+        // For each distance, X + Z detectors should sum to full grid
+        for d in [3, 5, 7, 9, 11] {
+            let full = Grid3DConfig::for_rotated_surface(d);
+            let x_config = Grid3DConfig::for_x_stabilizers(d, d);
+            let z_config = Grid3DConfig::for_z_stabilizers(d, d);
+
+            // For even grid_size, X and Z have exactly equal counts
+            let grid_size = d - 1;
+            if grid_size % 2 == 0 {
+                assert_eq!(x_config.num_detectors(), full.num_detectors() / 2);
+                assert_eq!(z_config.num_detectors(), full.num_detectors() / 2);
+            }
+        }
     }
 }
 

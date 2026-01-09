@@ -323,6 +323,157 @@ pub fn wilson_ci(successes: usize, trials: usize, z: f64) -> (f64, f64) {
 /// ler_per_round, ler_ci_low, ler_ci_high, decode_us, time_per_round_us
 pub const CSV_HEADER: &str = "distance,physical_p,rounds,shots,logical_errors,ler_per_round,ler_ci_low,ler_ci_high,decode_us,time_per_round_us";
 
+/// CSV header for dual decoder output.
+///
+/// Separate columns for X and Z bases, plus combined statistics.
+pub const DUAL_CSV_HEADER: &str = "distance,physical_p,rounds,shots,x_errors,z_errors,combined_errors,x_ler,z_ler,combined_ler,x_decode_us,z_decode_us,total_decode_us";
+
+/// Results from dual (X/Z) basis decoding.
+///
+/// Tracks separate statistics for X and Z decoders, as well as
+/// combined metrics. This is essential for realistic fault-tolerant
+/// QEC where both bases must be decoded independently.
+#[derive(Debug, Clone)]
+pub struct DualThresholdPoint {
+    /// Code distance.
+    pub distance: usize,
+
+    /// Physical error rate.
+    pub physical_error_rate: f64,
+
+    /// Number of syndrome samples.
+    pub num_shots: usize,
+
+    /// Number of measurement rounds.
+    pub num_rounds: usize,
+
+    // X basis results
+    /// Logical errors in X basis decoding.
+    pub x_logical_errors: usize,
+    /// X basis LER per round.
+    pub x_ler_per_round: f64,
+    /// X basis average decode time (µs).
+    pub x_decode_time_us: f64,
+
+    // Z basis results
+    /// Logical errors in Z basis decoding.
+    pub z_logical_errors: usize,
+    /// Z basis LER per round.
+    pub z_ler_per_round: f64,
+    /// Z basis average decode time (µs).
+    pub z_decode_time_us: f64,
+
+    // Combined results
+    /// Combined logical errors (X OR Z failed).
+    pub combined_logical_errors: usize,
+    /// Combined LER per round.
+    pub combined_ler_per_round: f64,
+    /// Total decode time (X + Z) in µs.
+    pub total_decode_time_us: f64,
+}
+
+impl DualThresholdPoint {
+    /// Create a new dual threshold point from benchmark results.
+    pub fn new(
+        distance: usize,
+        physical_error_rate: f64,
+        num_shots: usize,
+        num_rounds: usize,
+        x_logical_errors: usize,
+        z_logical_errors: usize,
+        combined_logical_errors: usize,
+        x_decode_time_us: f64,
+        z_decode_time_us: f64,
+    ) -> Self {
+        let total_rounds = num_shots * num_rounds;
+        let total_rounds_f = total_rounds as f64;
+
+        let x_ler_per_round = if total_rounds > 0 {
+            x_logical_errors as f64 / total_rounds_f
+        } else {
+            0.0
+        };
+
+        let z_ler_per_round = if total_rounds > 0 {
+            z_logical_errors as f64 / total_rounds_f
+        } else {
+            0.0
+        };
+
+        let combined_ler_per_round = if total_rounds > 0 {
+            combined_logical_errors as f64 / total_rounds_f
+        } else {
+            0.0
+        };
+
+        Self {
+            distance,
+            physical_error_rate,
+            num_shots,
+            num_rounds,
+            x_logical_errors,
+            x_ler_per_round,
+            x_decode_time_us,
+            z_logical_errors,
+            z_ler_per_round,
+            z_decode_time_us,
+            combined_logical_errors,
+            combined_ler_per_round,
+            total_decode_time_us: x_decode_time_us + z_decode_time_us,
+        }
+    }
+
+    /// Format as CSV row.
+    pub fn to_csv(&self) -> String {
+        format!(
+            "{},{:.6},{},{},{},{},{},{:.6e},{:.6e},{:.6e},{:.3},{:.3},{:.3}",
+            self.distance,
+            self.physical_error_rate,
+            self.num_rounds,
+            self.num_shots,
+            self.x_logical_errors,
+            self.z_logical_errors,
+            self.combined_logical_errors,
+            self.x_ler_per_round,
+            self.z_ler_per_round,
+            self.combined_ler_per_round,
+            self.x_decode_time_us,
+            self.z_decode_time_us,
+            self.total_decode_time_us,
+        )
+    }
+
+    /// Time per measurement round in nanoseconds (total X+Z).
+    #[inline]
+    pub fn time_per_round_ns(&self) -> f64 {
+        if self.num_rounds > 0 {
+            (self.total_decode_time_us / self.num_rounds as f64) * 1000.0
+        } else {
+            0.0
+        }
+    }
+
+    /// X time per round in nanoseconds.
+    #[inline]
+    pub fn x_time_per_round_ns(&self) -> f64 {
+        if self.num_rounds > 0 {
+            (self.x_decode_time_us / self.num_rounds as f64) * 1000.0
+        } else {
+            0.0
+        }
+    }
+
+    /// Z time per round in nanoseconds.
+    #[inline]
+    pub fn z_time_per_round_ns(&self) -> f64 {
+        if self.num_rounds > 0 {
+            (self.z_decode_time_us / self.num_rounds as f64) * 1000.0
+        } else {
+            0.0
+        }
+    }
+}
+
 /// Latency statistics for decoding performance analysis.
 ///
 /// Contains common percentiles useful for understanding decoder performance:

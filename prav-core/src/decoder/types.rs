@@ -126,3 +126,66 @@ impl Default for BoundaryConfig {
         }
     }
 }
+
+impl BoundaryConfig {
+    /// All edges are boundaries (default for planar surface codes).
+    #[must_use]
+    pub const fn all_boundaries() -> Self {
+        Self {
+            check_top: true,
+            check_bottom: true,
+            check_left: true,
+            check_right: true,
+        }
+    }
+
+    /// No edges are boundaries (toric code / periodic boundaries).
+    #[must_use]
+    pub const fn no_boundaries() -> Self {
+        Self {
+            check_top: false,
+            check_bottom: false,
+            check_left: false,
+            check_right: false,
+        }
+    }
+
+    /// Only top/bottom edges are boundaries (for X-type stabilizer decoding).
+    ///
+    /// In rotated surface codes, X-type stabilizers connect to top/bottom
+    /// boundaries for the X logical observable.
+    #[must_use]
+    pub const fn horizontal_only() -> Self {
+        Self {
+            check_top: true,
+            check_bottom: true,
+            check_left: false,
+            check_right: false,
+        }
+    }
+
+    /// Only left/right edges are boundaries (for Z-type stabilizer decoding).
+    ///
+    /// In rotated surface codes, Z-type stabilizers connect to left/right
+    /// boundaries for the Z logical observable.
+    #[must_use]
+    pub const fn vertical_only() -> Self {
+        Self {
+            check_top: false,
+            check_bottom: false,
+            check_left: true,
+            check_right: true,
+        }
+    }
+
+    /// Check if a position is on the boundary according to this config.
+    #[must_use]
+    #[inline(always)]
+    pub const fn is_boundary(&self, x: usize, y: usize, width: usize, height: usize) -> bool {
+        let on_top = y == 0 && self.check_top;
+        let on_bottom = y == height.saturating_sub(1) && self.check_bottom;
+        let on_left = x == 0 && self.check_left;
+        let on_right = x == width.saturating_sub(1) && self.check_right;
+        on_top || on_bottom || on_left || on_right
+    }
+}

@@ -33,7 +33,7 @@ use crate::arena::Arena;
 use crate::decoder::growth::ClusterGrowth;
 use crate::decoder::observables::{EdgeObservableLut, ObservableMode};
 use crate::decoder::state::DecodingState;
-use crate::decoder::types::EdgeCorrection;
+use crate::decoder::types::{BoundaryConfig, EdgeCorrection};
 use crate::topology::Topology;
 use core::marker::PhantomData;
 
@@ -510,5 +510,64 @@ impl<'a, T: Topology> DynDecoder<'a, T> {
     #[inline]
     pub fn clear_edge_observable_lut(&mut self) {
         dispatch!(self, clear_edge_observable_lut);
+    }
+
+    // =========================================================================
+    // Boundary Configuration Methods
+    // =========================================================================
+
+    /// Sets the boundary configuration for the decoder.
+    ///
+    /// This controls which edges of the grid are treated as boundaries for
+    /// matching purposes. Use this for split X/Z decoding where each basis
+    /// has different boundary conditions.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The boundary configuration to use
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use prav_core::BoundaryConfig;
+    ///
+    /// // For X-type stabilizers: only top/bottom boundaries
+    /// decoder.set_boundary_config(BoundaryConfig::horizontal_only());
+    ///
+    /// // For Z-type stabilizers: only left/right boundaries
+    /// decoder.set_boundary_config(BoundaryConfig::vertical_only());
+    /// ```
+    #[inline]
+    pub fn set_boundary_config(&mut self, config: BoundaryConfig) {
+        match self {
+            DynDecoder::S1(d) => d.boundary_config = config,
+            DynDecoder::S2(d) => d.boundary_config = config,
+            DynDecoder::S4(d) => d.boundary_config = config,
+            DynDecoder::S8(d) => d.boundary_config = config,
+            DynDecoder::S16(d) => d.boundary_config = config,
+            DynDecoder::S32(d) => d.boundary_config = config,
+            DynDecoder::S64(d) => d.boundary_config = config,
+            DynDecoder::S128(d) => d.boundary_config = config,
+            DynDecoder::S256(d) => d.boundary_config = config,
+            DynDecoder::S512(d) => d.boundary_config = config,
+        }
+    }
+
+    /// Returns the current boundary configuration.
+    #[inline]
+    #[must_use]
+    pub fn boundary_config(&self) -> BoundaryConfig {
+        match self {
+            DynDecoder::S1(d) => d.boundary_config,
+            DynDecoder::S2(d) => d.boundary_config,
+            DynDecoder::S4(d) => d.boundary_config,
+            DynDecoder::S8(d) => d.boundary_config,
+            DynDecoder::S16(d) => d.boundary_config,
+            DynDecoder::S32(d) => d.boundary_config,
+            DynDecoder::S64(d) => d.boundary_config,
+            DynDecoder::S128(d) => d.boundary_config,
+            DynDecoder::S256(d) => d.boundary_config,
+            DynDecoder::S512(d) => d.boundary_config,
+        }
     }
 }
