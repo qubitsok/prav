@@ -163,12 +163,7 @@ impl<'a> EdgeObservableLut<'a> {
 ///
 /// Bitmask of affected observables (bit 0 = X, bit 1 = Z).
 #[inline(always)]
-pub fn phenomenological_boundary_observable(
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-) -> u8 {
+pub fn phenomenological_boundary_observable(x: usize, y: usize, width: usize, height: usize) -> u8 {
     let mut obs = 0u8;
 
     // Left/right boundaries affect Z observable
@@ -203,22 +198,40 @@ mod tests {
         assert_eq!(phenomenological_boundary_observable(2, 2, width, height), 0);
 
         // Left boundary - Z observable
-        assert_eq!(phenomenological_boundary_observable(0, 2, width, height), 0b10);
+        assert_eq!(
+            phenomenological_boundary_observable(0, 2, width, height),
+            0b10
+        );
 
         // Right boundary - Z observable
-        assert_eq!(phenomenological_boundary_observable(4, 2, width, height), 0b10);
+        assert_eq!(
+            phenomenological_boundary_observable(4, 2, width, height),
+            0b10
+        );
 
         // Bottom boundary - X observable
-        assert_eq!(phenomenological_boundary_observable(2, 0, width, height), 0b01);
+        assert_eq!(
+            phenomenological_boundary_observable(2, 0, width, height),
+            0b01
+        );
 
         // Top boundary - X observable
-        assert_eq!(phenomenological_boundary_observable(2, 4, width, height), 0b01);
+        assert_eq!(
+            phenomenological_boundary_observable(2, 4, width, height),
+            0b01
+        );
 
         // Bottom-left corner - both observables
-        assert_eq!(phenomenological_boundary_observable(0, 0, width, height), 0b11);
+        assert_eq!(
+            phenomenological_boundary_observable(0, 0, width, height),
+            0b11
+        );
 
         // Top-right corner - both observables
-        assert_eq!(phenomenological_boundary_observable(4, 4, width, height), 0b11);
+        assert_eq!(
+            phenomenological_boundary_observable(4, 4, width, height),
+            0b11
+        );
     }
 
     #[test]

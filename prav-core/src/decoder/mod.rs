@@ -67,7 +67,7 @@ pub use union_find::UnionFind;
 pub use observables::{EdgeObservableLut, ObservableMode, phenomenological_boundary_observable};
 
 // Sparse decoder
-pub use sparse::{decode_sparse, extract_defects, SparseState, SPARSE_THRESHOLD};
+pub use sparse::{SPARSE_THRESHOLD, SparseState, decode_sparse, extract_defects};
 
 // Streaming decoder
 pub use streaming::{

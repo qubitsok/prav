@@ -27,8 +27,8 @@
 //! Lifting: (color, restricted_idx) → full_idx
 //! ```
 
-use crate::color_code::types::FaceColor;
 use crate::color_code::grid_3d::ColorCodeGrid3DConfig;
+use crate::color_code::types::FaceColor;
 
 /// Pre-computed restriction maps for efficient index conversion.
 ///
@@ -314,9 +314,8 @@ mod tests {
         assert_eq!(maps.count(FaceColor::Blue), expected[2]);
 
         // Total should equal num_detectors
-        let total = maps.count(FaceColor::Red)
-            + maps.count(FaceColor::Green)
-            + maps.count(FaceColor::Blue);
+        let total =
+            maps.count(FaceColor::Red) + maps.count(FaceColor::Green) + maps.count(FaceColor::Blue);
         assert_eq!(total, config.num_detectors());
     }
 
@@ -344,7 +343,8 @@ mod tests {
         let mut green_out = [0u32; 8];
         let mut blue_out = [0u32; 8];
 
-        let (r, g, b) = restrict_syndrome(&defects, &maps, &mut red_out, &mut green_out, &mut blue_out);
+        let (r, g, b) =
+            restrict_syndrome(&defects, &maps, &mut red_out, &mut green_out, &mut blue_out);
 
         assert_eq!(r, 2); // Two red defects
         assert_eq!(g, 1); // One green defect

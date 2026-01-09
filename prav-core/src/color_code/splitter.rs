@@ -11,8 +11,8 @@
 //!
 //! Both representations are supported with efficient conversion.
 
-use crate::color_code::types::FaceColor;
 use crate::color_code::grid_3d::ColorCodeGrid3DConfig;
+use crate::color_code::types::FaceColor;
 
 /// Splits a dense syndrome bitmask by color.
 ///

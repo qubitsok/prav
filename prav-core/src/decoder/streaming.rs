@@ -305,12 +305,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> StreamingDecoder<'a, T, STRIDE_Y> {
     /// Panics if the arena doesn't have enough space for all allocations.
     pub fn new(arena: &mut Arena<'a>, config: StreamingConfig) -> Self {
         // Create the underlying decoder with window_size as depth
-        let decoder = DecodingState::new(
-            arena,
-            config.width,
-            config.height,
-            config.window_size,
-        );
+        let decoder = DecodingState::new(arena, config.width, config.height, config.window_size);
 
         // Allocate streaming-specific buffers
         let round_metadata = arena
@@ -504,7 +499,8 @@ impl<'a, T: Topology, const STRIDE_Y: usize> StreamingDecoder<'a, T, STRIDE_Y> {
                 let dirty_word = blk_idx / 64;
                 let dirty_bit = blk_idx % 64;
                 if dirty_word < self.decoder.block_dirty_mask.len() {
-                    *self.decoder.block_dirty_mask.get_unchecked_mut(dirty_word) |= 1u64 << dirty_bit;
+                    *self.decoder.block_dirty_mask.get_unchecked_mut(dirty_word) |=
+                        1u64 << dirty_bit;
                 }
 
                 // Update block state
@@ -587,7 +583,8 @@ impl<'a, T: Topology, const STRIDE_Y: usize> StreamingDecoder<'a, T, STRIDE_Y> {
         for round_offset in 1..self.config.window_size {
             let other_z = (exit_z + round_offset) % self.config.window_size;
             let layer_start = other_z * self.config.stride_z;
-            let layer_end = (layer_start + self.config.stride_z).min(self.decoder.parents.len() - 1);
+            let layer_end =
+                (layer_start + self.config.stride_z).min(self.decoder.parents.len() - 1);
 
             for node in layer_start..layer_end {
                 // Find root
@@ -648,7 +645,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> StreamingDecoder<'a, T, STRIDE_Y> {
                 let node = (base_node + block_base + bit) as u32;
                 if self.exit_layer_count < self.exit_layer_defects.len() {
                     unsafe {
-                        *self.exit_layer_defects.get_unchecked_mut(self.exit_layer_count) = node;
+                        *self
+                            .exit_layer_defects
+                            .get_unchecked_mut(self.exit_layer_count) = node;
                     }
                     self.exit_layer_count += 1;
                 }
@@ -704,7 +703,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> StreamingDecoder<'a, T, STRIDE_Y> {
         let correction = EdgeCorrection { u, v };
 
         unsafe {
-            *self.partial_corrections.get_unchecked_mut(self.partial_corrections_count) = correction;
+            *self
+                .partial_corrections
+                .get_unchecked_mut(self.partial_corrections_count) = correction;
         }
         self.partial_corrections_count += 1;
     }
@@ -755,7 +756,9 @@ pub struct FlushIterator<'iter, 'a, T: Topology, const STRIDE_Y: usize> {
     remaining: usize,
 }
 
-impl<'iter, 'a, T: Topology, const STRIDE_Y: usize> Iterator for FlushIterator<'iter, 'a, T, STRIDE_Y> {
+impl<'iter, 'a, T: Topology, const STRIDE_Y: usize> Iterator
+    for FlushIterator<'iter, 'a, T, STRIDE_Y>
+{
     type Item = CommittedCorrections<'iter>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -789,7 +792,9 @@ impl<'iter, 'a, T: Topology, const STRIDE_Y: usize> Iterator for FlushIterator<'
 }
 
 impl<'iter, 'a, T: Topology, const STRIDE_Y: usize> ExactSizeIterator
-    for FlushIterator<'iter, 'a, T, STRIDE_Y> {}
+    for FlushIterator<'iter, 'a, T, STRIDE_Y>
+{
+}
 
 // =============================================================================
 // Buffer Size Calculation
@@ -842,7 +847,7 @@ const fn const_max(a: usize, b: usize) -> usize {
 
 /// Const-compatible ceiling division.
 const fn div_ceil(a: usize, b: usize) -> usize {
-    (a + b - 1) / b
+    a.div_ceil(b)
 }
 
 /// Next power of two (const-compatible).

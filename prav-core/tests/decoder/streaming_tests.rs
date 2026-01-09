@@ -3,10 +3,8 @@
 //! These tests verify that streaming decoding produces results equivalent
 //! to batch decoding for the same syndrome data.
 
-use prav_core::{
-    Arena, StreamingConfig, StreamingDecoder, streaming_buffer_size,
-};
 use prav_core::topology::Grid3D;
+use prav_core::{Arena, StreamingConfig, StreamingDecoder, streaming_buffer_size};
 
 #[test]
 fn test_streaming_empty_syndromes() {
@@ -29,8 +27,7 @@ fn test_streaming_empty_syndromes() {
     let mut buffer = vec![0u8; buf_size];
     let mut arena = Arena::new(&mut buffer);
 
-    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> =
-        StreamingDecoder::new(&mut arena, config);
+    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> = StreamingDecoder::new(&mut arena, config);
 
     let empty = [0u64; 1];
 
@@ -40,7 +37,8 @@ fn test_streaming_empty_syndromes() {
             assert!(
                 committed.corrections.is_empty(),
                 "Round {} should have no corrections with empty syndromes, got {}",
-                committed.round, committed.corrections.len()
+                committed.round,
+                committed.corrections.len()
             );
         }
     }
@@ -50,7 +48,8 @@ fn test_streaming_empty_syndromes() {
         assert!(
             committed.corrections.is_empty(),
             "Round {} should have no corrections with empty syndromes, got {}",
-            committed.round, committed.corrections.len()
+            committed.round,
+            committed.corrections.len()
         );
     }
 }
@@ -76,8 +75,7 @@ fn test_streaming_round_ordering() {
     let mut buffer = vec![0u8; buf_size];
     let mut arena = Arena::new(&mut buffer);
 
-    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> =
-        StreamingDecoder::new(&mut arena, config);
+    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> = StreamingDecoder::new(&mut arena, config);
 
     let empty = [0u64; 1];
     let mut committed_rounds = Vec::new();
@@ -121,8 +119,7 @@ fn test_streaming_window_fill_behavior() {
     let mut buffer = vec![0u8; buf_size];
     let mut arena = Arena::new(&mut buffer);
 
-    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> =
-        StreamingDecoder::new(&mut arena, config);
+    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> = StreamingDecoder::new(&mut arena, config);
 
     let empty = [0u64; 1];
 
@@ -168,8 +165,7 @@ fn test_streaming_flush_returns_remaining() {
     let mut buffer = vec![0u8; buf_size];
     let mut arena = Arena::new(&mut buffer);
 
-    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> =
-        StreamingDecoder::new(&mut arena, config);
+    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> = StreamingDecoder::new(&mut arena, config);
 
     let empty = [0u64; 1];
 
@@ -206,8 +202,7 @@ fn test_streaming_reset_clears_state() {
     let mut buffer = vec![0u8; buf_size];
     let mut arena = Arena::new(&mut buffer);
 
-    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> =
-        StreamingDecoder::new(&mut arena, config);
+    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> = StreamingDecoder::new(&mut arena, config);
 
     let empty = [0u64; 1];
 
@@ -253,8 +248,7 @@ fn test_streaming_with_isolated_defects() {
     let mut buffer = vec![0u8; buf_size];
     let mut arena = Arena::new(&mut buffer);
 
-    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> =
-        StreamingDecoder::new(&mut arena, config);
+    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> = StreamingDecoder::new(&mut arena, config);
 
     // Round 0: defect at position 0
     let round0 = [0b0001u64];
@@ -300,8 +294,7 @@ fn test_streaming_large_window() {
     let mut buffer = vec![0u8; buf_size];
     let mut arena = Arena::new(&mut buffer);
 
-    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> =
-        StreamingDecoder::new(&mut arena, config);
+    let mut decoder: StreamingDecoder<Grid3D, STRIDE_Y> = StreamingDecoder::new(&mut arena, config);
 
     let empty = [0u64; 1];
     let mut committed_count = 0;

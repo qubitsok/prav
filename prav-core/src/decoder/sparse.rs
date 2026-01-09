@@ -97,7 +97,11 @@ impl SparseState {
 /// * `stride_y` - Y stride for coordinate conversion
 /// * `stride_z` - Z stride for coordinate conversion (1 for 2D)
 #[inline]
-pub fn extract_defects(syndromes: &[u64], _stride_y: usize, _stride_z: usize) -> Option<SparseState> {
+pub fn extract_defects(
+    syndromes: &[u64],
+    _stride_y: usize,
+    _stride_z: usize,
+) -> Option<SparseState> {
     let mut state = SparseState::new();
 
     for (word_idx, &word) in syndromes.iter().enumerate() {

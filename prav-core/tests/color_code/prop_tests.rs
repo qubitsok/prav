@@ -244,7 +244,9 @@ mod targeted_tests {
                     FaceColor::from_coords(x, y),
                     expected_color,
                     "Diagonal x+y={} should have consistent color at ({}, {})",
-                    sum, x, y
+                    sum,
+                    x,
+                    y
                 );
             }
         }

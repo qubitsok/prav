@@ -14,22 +14,17 @@
 use crate::color_code::types::FaceColor;
 
 /// Mode for tracking logical observables in color codes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorObservableMode {
     /// No observable tracking (maximum performance).
     Disabled,
     /// Phenomenological model: track boundary crossings.
     /// Each color's boundary crossing flips the corresponding observable bit.
+    #[default]
     Phenomenological,
     /// Circuit-level model: use per-edge observable lookup table.
     /// Required for accurate tracking with realistic noise.
     CircuitLevel,
-}
-
-impl Default for ColorObservableMode {
-    fn default() -> Self {
-        Self::Phenomenological
-    }
 }
 
 /// Per-color observable frame tracking.

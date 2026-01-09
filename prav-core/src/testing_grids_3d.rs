@@ -245,7 +245,8 @@ impl Grid3DConfig {
     #[must_use]
     #[inline(always)]
     pub const fn is_boundary(&self, x: usize, y: usize) -> bool {
-        self.boundary_config.is_boundary(x, y, self.width, self.height)
+        self.boundary_config
+            .is_boundary(x, y, self.width, self.height)
     }
 
     /// Number of detectors per measurement round in this configuration.
@@ -546,12 +547,12 @@ mod tests {
         assert!(config.boundary_config.check_right);
 
         // 4x4 grid: corners and edges are boundaries
-        assert!(config.is_boundary(0, 0));  // corner
-        assert!(config.is_boundary(3, 0));  // bottom-right
-        assert!(config.is_boundary(0, 3));  // top-left
-        assert!(config.is_boundary(3, 3));  // top-right
-        assert!(config.is_boundary(1, 0));  // bottom edge
-        assert!(config.is_boundary(0, 2));  // left edge
+        assert!(config.is_boundary(0, 0)); // corner
+        assert!(config.is_boundary(3, 0)); // bottom-right
+        assert!(config.is_boundary(0, 3)); // top-left
+        assert!(config.is_boundary(3, 3)); // top-right
+        assert!(config.is_boundary(1, 0)); // bottom edge
+        assert!(config.is_boundary(0, 2)); // left edge
         assert!(!config.is_boundary(1, 1)); // interior
         assert!(!config.is_boundary(2, 2)); // interior
     }
@@ -566,10 +567,10 @@ mod tests {
         assert!(!config.boundary_config.check_right);
 
         // 2x4 compact grid: only y=0 and y=3 are boundaries
-        assert!(config.is_boundary(0, 0));  // bottom edge
-        assert!(config.is_boundary(1, 0));  // bottom edge
-        assert!(config.is_boundary(0, 3));  // top edge
-        assert!(config.is_boundary(1, 3));  // top edge
+        assert!(config.is_boundary(0, 0)); // bottom edge
+        assert!(config.is_boundary(1, 0)); // bottom edge
+        assert!(config.is_boundary(0, 3)); // top edge
+        assert!(config.is_boundary(1, 3)); // top edge
         assert!(!config.is_boundary(0, 1)); // left edge but NOT boundary for Horizontal
         assert!(!config.is_boundary(0, 2)); // left edge but NOT boundary
         assert!(!config.is_boundary(1, 1)); // interior
@@ -577,14 +578,14 @@ mod tests {
 
     #[test]
     fn test_boundary_config_vertical() {
-        let config = Grid3DConfig::custom(4, 4, 1)
-            .with_boundary_config(BoundaryConfig::vertical_only());
+        let config =
+            Grid3DConfig::custom(4, 4, 1).with_boundary_config(BoundaryConfig::vertical_only());
 
         // Only x=0 and x=3 are boundaries
-        assert!(config.is_boundary(0, 0));  // left edge
-        assert!(config.is_boundary(0, 2));  // left edge
-        assert!(config.is_boundary(3, 1));  // right edge
-        assert!(config.is_boundary(3, 3));  // right edge
+        assert!(config.is_boundary(0, 0)); // left edge
+        assert!(config.is_boundary(0, 2)); // left edge
+        assert!(config.is_boundary(3, 1)); // right edge
+        assert!(config.is_boundary(3, 3)); // right edge
         assert!(!config.is_boundary(1, 0)); // bottom edge but NOT boundary for Vertical
         assert!(!config.is_boundary(2, 3)); // top edge but NOT boundary
         assert!(!config.is_boundary(1, 1)); // interior
@@ -598,7 +599,7 @@ mod tests {
         let config_2d = config_3d.with_depth(1);
         assert_eq!(config_2d.depth, 1);
         assert_eq!(config_2d.num_rounds, 1);
-        assert_eq!(config_2d.width, 4);  // spatial dims unchanged
+        assert_eq!(config_2d.width, 4); // spatial dims unchanged
         assert_eq!(config_2d.height, 4);
         assert!(config_2d.stride_y.is_power_of_two());
     }

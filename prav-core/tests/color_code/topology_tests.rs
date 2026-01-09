@@ -3,9 +3,9 @@
 //! Tests verifying the triangular lattice topology properties
 //! and color code specific constraints.
 
+use prav_core::Topology;
 use prav_core::color_code::{ColorCodeGrid3DConfig, FaceColor};
 use prav_core::topology::TriangularGrid;
-use prav_core::Topology;
 
 /// Test that TriangularGrid has 6 neighbors for interior nodes.
 #[test]
@@ -24,7 +24,11 @@ fn test_triangular_neighbor_count() {
 
     // Interior nodes in triangular grid should have 5 or 6 neighbors
     // (4 cardinal + 1-2 diagonal depending on parity)
-    assert!(count >= 5 && count <= 6, "Expected 5-6 neighbors for interior node, got {}", count);
+    assert!(
+        (5..=6).contains(&count),
+        "Expected 5-6 neighbors for interior node, got {}",
+        count
+    );
 }
 
 /// Test that CARDINAL neighbors have different colors.
@@ -97,11 +101,7 @@ fn test_detector_color_distribution() {
 
     // Each color should have at least some detectors
     for (i, &count) in counts.iter().enumerate() {
-        assert!(
-            count > 0,
-            "Color {} should have at least some detectors",
-            i
-        );
+        assert!(count > 0, "Color {} should have at least some detectors", i);
     }
 }
 
@@ -139,7 +139,10 @@ fn test_restricted_dimensions() {
         // Restricted dimensions should be non-zero
         assert!(rw > 0, "Restricted width for {:?} should be > 0", color);
         assert!(rh > 0, "Restricted height for {:?} should be > 0", color);
-        assert_eq!(rd, config.depth, "Restricted depth should equal config depth");
+        assert_eq!(
+            rd, config.depth,
+            "Restricted depth should equal config depth"
+        );
     }
 }
 

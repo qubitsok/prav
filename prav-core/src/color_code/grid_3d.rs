@@ -253,7 +253,7 @@ impl ColorCodeGrid3DConfig {
         // In a (x + y) % 3 coloring pattern:
         // - Each row has approximately width/3 detectors of each color
         // - Compact representation: ceiling division
-        let restricted_width = (self.width + 2) / 3;
+        let restricted_width = self.width.div_ceil(3);
         let restricted_height = self.height;
         (restricted_width, restricted_height, self.depth)
     }
@@ -262,11 +262,7 @@ impl ColorCodeGrid3DConfig {
 /// Maximum of three values (const fn).
 const fn max3(a: usize, b: usize, c: usize) -> usize {
     let max_ab = if a > b { a } else { b };
-    if max_ab > c {
-        max_ab
-    } else {
-        c
-    }
+    if max_ab > c { max_ab } else { c }
 }
 
 /// Next power of two (const fn).

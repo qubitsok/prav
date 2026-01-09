@@ -1,5 +1,6 @@
 mod batch_verification;
 mod boundary_diagnostics;
+mod builder_tests;
 mod component_api;
 mod edge_compaction;
 mod effective_mask;
@@ -22,6 +23,7 @@ mod scenarios;
 mod scheduler_optimization;
 mod selective_spill_prop;
 mod sparse_active;
+mod sparse_tests;
 mod sparse_worklist;
 mod streaming_tests;
 mod trace_optimization;

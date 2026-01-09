@@ -49,13 +49,13 @@
 //! - [Decoder for Triangular Color Code by Matching on Möbius Strip](https://journals.aps.org/prxquantum/abstract/10.1103/PRXQuantum.3.010310)
 
 // Submodules
-mod types;
+pub mod decoder;
 pub mod grid_3d;
+pub mod observables;
 pub mod restriction;
 pub mod splitter;
-pub mod decoder;
-pub mod observables;
+mod types;
 
 // Re-exports
-pub use types::{ColorCodeBoundaryConfig, ColorCodeResult, FaceColor};
 pub use grid_3d::ColorCodeGrid3DConfig;
+pub use types::{ColorCodeBoundaryConfig, ColorCodeResult, FaceColor};

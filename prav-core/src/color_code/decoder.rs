@@ -48,10 +48,12 @@
 //! let result = decoder.decode(&defects);
 //! ```
 
-use crate::color_code::types::{ColorCodeResult, FaceColor};
 use crate::color_code::grid_3d::ColorCodeGrid3DConfig;
-use crate::color_code::observables::{ColorObservableFrame, ColorObservableMode, ObservableAccumulator};
+use crate::color_code::observables::{
+    ColorObservableFrame, ColorObservableMode, ObservableAccumulator,
+};
 use crate::color_code::splitter::split_sparse_syndrome;
+use crate::color_code::types::{ColorCodeResult, FaceColor};
 
 /// Maximum number of defects per color that can be processed.
 const MAX_DEFECTS_PER_COLOR: usize = 4096;
@@ -101,10 +103,7 @@ impl<'a, const STRIDE_Y: usize> ColorCodeDecoder<'a, STRIDE_Y> {
     ///
     /// # Errors
     /// Returns `None` if arena allocation fails.
-    pub fn new(
-        arena: &mut crate::Arena<'a>,
-        config: ColorCodeGrid3DConfig,
-    ) -> Option<Self> {
+    pub fn new(arena: &mut crate::Arena<'a>, config: ColorCodeGrid3DConfig) -> Option<Self> {
         // Allocate syndrome buffers for each color
         let red_defects = arena.alloc_slice::<u32>(MAX_DEFECTS_PER_COLOR).ok()?;
         let green_defects = arena.alloc_slice::<u32>(MAX_DEFECTS_PER_COLOR).ok()?;
@@ -310,8 +309,7 @@ mod tests {
         let mut buffer = vec![0u8; size];
         let mut arena = Arena::new(&mut buffer);
 
-        let decoder: Option<ColorCodeDecoder<'_, 8>> =
-            ColorCodeDecoder::new(&mut arena, config);
+        let decoder: Option<ColorCodeDecoder<'_, 8>> = ColorCodeDecoder::new(&mut arena, config);
         assert!(decoder.is_some());
     }
 
