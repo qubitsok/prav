@@ -5,8 +5,8 @@ use prav_core::arena::Arena;
 use prav_core::decoder::EdgeCorrection;
 use prav_core::intrinsics::morton_encode_2d;
 use prav_core::qec_engine::QecEngine;
-use prav_core::topology::SquareGrid;
 use prav_core::testing_grids::{GridConfig, TestGrids};
+use prav_core::topology::SquareGrid;
 
 const ERROR_PROBABILITY: f64 = 0.001;
 
@@ -16,7 +16,7 @@ fn generate_defects(config: GridConfig, p: f64) -> Vec<u64> {
     let max_dim = w.max(h);
     let pow2 = max_dim.next_power_of_two();
     let total_morton = pow2 * pow2;
-    let num_blocks = (total_morton + 1 + 63) / 64;
+    let num_blocks = (total_morton + 1).div_ceil(64);
     let mut dense = vec![0u64; num_blocks];
 
     let mut seed = 123456789u64;
@@ -64,8 +64,12 @@ fn setup_grid_32(config: GridConfig) -> Context32<'static> {
     }
 }
 
-fn setup_tiny() -> Context32<'static> { setup_grid_32(TestGrids::TINY) }
-fn setup_medium() -> Context32<'static> { setup_grid_32(TestGrids::MEDIUM) }
+fn setup_tiny() -> Context32<'static> {
+    setup_grid_32(TestGrids::TINY)
+}
+fn setup_medium() -> Context32<'static> {
+    setup_grid_32(TestGrids::MEDIUM)
+}
 
 // Stride 64 Context
 struct Context64<'a> {
@@ -91,7 +95,9 @@ fn setup_grid_64(config: GridConfig) -> Context64<'static> {
     }
 }
 
-fn setup_large() -> Context64<'static> { setup_grid_64(TestGrids::LARGE) }
+fn setup_large() -> Context64<'static> {
+    setup_grid_64(TestGrids::LARGE)
+}
 
 #[library_benchmark]
 #[bench::tiny(setup_tiny())]

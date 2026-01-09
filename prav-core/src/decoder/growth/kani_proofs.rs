@@ -69,7 +69,10 @@ fn verify_boundary_offset_bounds() {
     kani::assert(result >= 0, "Boundary offset must be non-negative");
 
     // Invariant 2: Result should fit in u32
-    kani::assert(result <= u32::MAX as isize, "Boundary offset must fit in u32");
+    kani::assert(
+        result <= u32::MAX as isize,
+        "Boundary offset must fit in u32",
+    );
 }
 
 // ============================================================================
@@ -228,12 +231,18 @@ fn verify_trailing_zeros_bounds() {
     kani::assert(tz < 64, "Trailing zeros must be less than 64");
 
     // The bit at position tz must be set
-    kani::assert((mask & (1u64 << tz)) != 0, "Bit at trailing_zeros position must be set");
+    kani::assert(
+        (mask & (1u64 << tz)) != 0,
+        "Bit at trailing_zeros position must be set",
+    );
 
     // All bits below tz must be zero
     if tz > 0 {
         let lower_mask = (1u64 << tz) - 1;
-        kani::assert((mask & lower_mask) == 0, "All bits below trailing_zeros must be zero");
+        kani::assert(
+            (mask & lower_mask) == 0,
+            "All bits below trailing_zeros must be zero",
+        );
     }
 }
 
@@ -274,12 +283,15 @@ fn verify_block_bit_calculations() {
     let bit = (node % 64) as usize;
 
     // Invariants
-    kani::assert(blk < (MAX_NODES + 63) / 64, "Block index must be valid");
+    kani::assert(blk < MAX_NODES.div_ceil(64), "Block index must be valid");
     kani::assert(bit < 64, "Bit index must be less than 64");
 
     // Reconstruction must give back original node
     let reconstructed = (blk * 64 + bit) as u32;
-    kani::assert(reconstructed == node, "Block/bit must reconstruct to original node");
+    kani::assert(
+        reconstructed == node,
+        "Block/bit must reconstruct to original node",
+    );
 }
 
 // ============================================================================

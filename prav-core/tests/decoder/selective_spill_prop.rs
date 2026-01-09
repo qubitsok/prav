@@ -10,10 +10,10 @@ fn run_prop_test_scenario_32(w: usize, h: usize, defects: Vec<(usize, usize)>) -
     let mut arena = Arena::new(&mut memory);
     let mut decoder = DecodingState::<SquareGrid, 32>::new(&mut arena, w, h, 1);
 
-    let stride = 32;
+    let stride: usize = 32;
     let total_nodes = stride * stride;
 
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
     let mut dense_defects = vec![0u64; num_blocks];
 
     for (x, y) in defects {

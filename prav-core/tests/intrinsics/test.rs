@@ -6,9 +6,9 @@
 #[cfg(test)]
 mod tests {
     use prav_core::intrinsics::{
-        blsr, compact_bits_2d, compact_bits_3d, morton_dec, morton_encode_2d, morton_inc,
+        FastDiv, blsr, compact_bits_2d, compact_bits_3d, morton_dec, morton_encode_2d, morton_inc,
         prefetch_l1, spread_bits_2d, spread_bits_3d, spread_syndrome_8x8, spread_syndrome_linear,
-        spread_syndrome_masked, tzcnt, FastDiv,
+        spread_syndrome_masked, tzcnt,
     };
 
     // =========================================================================
@@ -386,7 +386,11 @@ mod tests {
         for idx in [0u32, 1, 5, 10, 100, 1000] {
             let inc = morton_inc(idx, x_mask);
             let dec = morton_dec(inc, x_mask);
-            assert_eq!(dec, idx, "inc then dec should return original for idx={}", idx);
+            assert_eq!(
+                dec, idx,
+                "inc then dec should return original for idx={}",
+                idx
+            );
         }
     }
 
@@ -626,11 +630,7 @@ mod tests {
             (u64::MAX, 0x5555555555555555u64),
         ] {
             let result = spread_syndrome_linear(boundary & occupied, occupied);
-            assert_eq!(
-                result & !occupied,
-                0,
-                "Result must be subset of occupied"
-            );
+            assert_eq!(result & !occupied, 0, "Result must be subset of occupied");
         }
     }
 
@@ -645,11 +645,7 @@ mod tests {
             (u64::MAX, 0x5555555555555555u64),
         ] {
             let result = spread_syndrome_masked(boundary & occupied, occupied, row_end, row_start);
-            assert_eq!(
-                result & !occupied,
-                0,
-                "Result must be subset of occupied"
-            );
+            assert_eq!(result & !occupied, 0, "Result must be subset of occupied");
         }
     }
 }

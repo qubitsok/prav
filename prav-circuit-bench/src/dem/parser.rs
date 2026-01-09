@@ -141,12 +141,12 @@ fn parse_error_line(
     // Format: error(probability) D<id1> D<id2> ... [^ L<obs_id> ...]
 
     // Extract probability
-    let paren_start = line.find('(').ok_or_else(|| {
-        DemError::InvalidSyntax("Missing opening parenthesis in error".into())
-    })?;
-    let paren_end = line.find(')').ok_or_else(|| {
-        DemError::InvalidSyntax("Missing closing parenthesis in error".into())
-    })?;
+    let paren_start = line
+        .find('(')
+        .ok_or_else(|| DemError::InvalidSyntax("Missing opening parenthesis in error".into()))?;
+    let paren_end = line
+        .find(')')
+        .ok_or_else(|| DemError::InvalidSyntax("Missing closing parenthesis in error".into()))?;
 
     let prob_str = &line[paren_start + 1..paren_end];
     let probability: f32 = prob_str
@@ -164,8 +164,8 @@ fn parse_error_line(
     // Parse detector IDs
     let mut detectors = Vec::new();
     for token in det_part.split_whitespace() {
-        if token.starts_with('D') {
-            let id: u32 = token[1..]
+        if let Some(id_str) = token.strip_prefix('D') {
+            let id: u32 = id_str
                 .parse()
                 .map_err(|_| DemError::InvalidDetectorId(token.into()))?;
             detectors.push(id);
@@ -176,8 +176,8 @@ fn parse_error_line(
     // Parse logical observable IDs
     let mut frame_changes = 0u8;
     for token in obs_part.split_whitespace() {
-        if token.starts_with('L') {
-            let id: u8 = token[1..]
+        if let Some(id_str) = token.strip_prefix('L') {
+            let id: u8 = id_str
                 .parse()
                 .map_err(|_| DemError::InvalidObservableId(token.into()))?;
             if id < 8 {
@@ -222,18 +222,9 @@ fn parse_shift_detectors(
 fn parse_coords(s: &str) -> Result<(f32, f32, f32), DemError> {
     let parts: Vec<&str> = s.split(',').map(|p| p.trim()).collect();
 
-    let x = parts
-        .first()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(0.0);
-    let y = parts
-        .get(1)
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(0.0);
-    let z = parts
-        .get(2)
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(0.0);
+    let x = parts.first().and_then(|p| p.parse().ok()).unwrap_or(0.0);
+    let y = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(0.0);
+    let z = parts.get(2).and_then(|p| p.parse().ok()).unwrap_or(0.0);
 
     Ok((x, y, z))
 }
@@ -241,8 +232,8 @@ fn parse_coords(s: &str) -> Result<(f32, f32, f32), DemError> {
 fn extract_observable_id(line: &str) -> Option<u8> {
     // Extract observable ID from "logical_observable L<id>"
     for token in line.split_whitespace() {
-        if token.starts_with('L') {
-            return token[1..].parse().ok();
+        if let Some(id_str) = token.strip_prefix('L') {
+            return id_str.parse().ok();
         }
     }
     None

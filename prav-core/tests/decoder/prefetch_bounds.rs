@@ -27,7 +27,7 @@ fn test_prefetch_boundary_conditions() {
     let mut corrections = vec![EdgeCorrection::default(); 100];
 
     let total_nodes = stride_y * stride_y;
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
     let mut dense_syndromes = vec![0u64; num_blocks];
 
     // Helper to set bit

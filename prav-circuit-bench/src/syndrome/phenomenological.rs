@@ -21,8 +21,8 @@
 //! - Bottom boundary (y=0): contributes to logical X
 
 use rand::Rng;
-use rand_xoshiro::Xoshiro256PlusPlus;
 use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 
 use prav_core::Grid3DConfig;
 
@@ -46,7 +46,7 @@ pub fn generate_phenomenological_syndromes(
     seed: u64,
 ) -> Vec<Vec<u64>> {
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
-    let num_words = (config.alloc_nodes() + 63) / 64;
+    let num_words = config.alloc_nodes().div_ceil(64);
 
     (0..num_shots)
         .map(|_| generate_single_syndrome(config, error_prob, num_words, &mut rng))
@@ -89,13 +89,13 @@ fn generate_single_syndrome(
 /// Returns syndromes with ground-truth logical flips for verification.
 pub fn generate_correlated_syndromes(
     config: &Grid3DConfig,
-    p_space: f64,  // Probability of space-like (data qubit) error
-    p_time: f64,   // Probability of time-like (measurement) error
+    p_space: f64, // Probability of space-like (data qubit) error
+    p_time: f64,  // Probability of time-like (measurement) error
     num_shots: usize,
     seed: u64,
 ) -> Vec<SyndromeWithLogical> {
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
-    let num_words = (config.alloc_nodes() + 63) / 64;
+    let num_words = config.alloc_nodes().div_ceil(64);
 
     (0..num_shots)
         .map(|_| generate_correlated_single(config, p_space, p_time, num_words, &mut rng))
@@ -239,7 +239,7 @@ mod tests {
 
         assert_eq!(syndromes.len(), 100);
         for syn in &syndromes {
-            assert!(syn.len() >= (config.num_detectors() + 63) / 64);
+            assert!(syn.len() >= config.num_detectors().div_ceil(64));
         }
     }
 
@@ -260,7 +260,7 @@ mod tests {
 
         assert_eq!(results.len(), 100);
         for r in &results {
-            assert!(r.syndrome.len() >= (config.num_detectors() + 63) / 64);
+            assert!(r.syndrome.len() >= config.num_detectors().div_ceil(64));
         }
     }
 
@@ -287,12 +287,16 @@ mod tests {
         let mut even_count = 0;
         for r in &results {
             let total: u32 = r.syndrome.iter().map(|w| w.count_ones()).sum();
-            if total % 2 == 0 {
+            if total.is_multiple_of(2) {
                 even_count += 1;
             }
         }
         // At p=0.001, we expect ~90%+ even parity
-        assert!(even_count > 800, "Expected mostly even parity, got {}/1000", even_count);
+        assert!(
+            even_count > 800,
+            "Expected mostly even parity, got {}/1000",
+            even_count
+        );
     }
 
     #[test]

@@ -22,7 +22,11 @@ fn test_edge_correction_default() {
 fn test_edge_correction_boundary_sentinel() {
     // Boundary corrections use v == u32::MAX as sentinel
     let boundary_correction = EdgeCorrection { u: 42, v: u32::MAX };
-    assert_eq!(boundary_correction.v, u32::MAX, "Boundary corrections use u32::MAX as v");
+    assert_eq!(
+        boundary_correction.v,
+        u32::MAX,
+        "Boundary corrections use u32::MAX as v"
+    );
 }
 
 #[test]
@@ -79,14 +83,20 @@ fn test_block_state_hot_default() {
 fn test_block_state_hot_alignment() {
     // BlockStateHot should be 64-byte aligned for cache line optimization
     let alignment = core::mem::align_of::<BlockStateHot>();
-    assert_eq!(alignment, 64, "BlockStateHot must be 64-byte aligned for cache line optimization");
+    assert_eq!(
+        alignment, 64,
+        "BlockStateHot must be 64-byte aligned for cache line optimization"
+    );
 }
 
 #[test]
 fn test_block_state_hot_size() {
     // BlockStateHot should be exactly 64 bytes (one cache line)
     let size = core::mem::size_of::<BlockStateHot>();
-    assert_eq!(size, 64, "BlockStateHot must be exactly 64 bytes (one cache line)");
+    assert_eq!(
+        size, 64,
+        "BlockStateHot must be exactly 64 bytes (one cache line)"
+    );
 }
 
 #[test]
@@ -113,6 +123,7 @@ fn test_block_state_hot_field_offsets() {
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)] // Testing field modifications explicitly
 fn test_block_state_hot_copy() {
     let mut original = BlockStateHot::default();
     original.boundary = 0xDEAD_BEEF_CAFE_BABE;
@@ -121,7 +132,10 @@ fn test_block_state_hot_copy() {
 
     let copied = original; // Copy
 
-    assert_eq!(copied.boundary, original.boundary, "Copy should preserve boundary");
+    assert_eq!(
+        copied.boundary, original.boundary,
+        "Copy should preserve boundary"
+    );
     assert_eq!(copied.root, original.root, "Copy should preserve root");
     assert_eq!(copied.flags, original.flags, "Copy should preserve flags");
 }
@@ -130,12 +144,22 @@ fn test_block_state_hot_copy() {
 fn test_block_state_hot_root_invalid_sentinel() {
     // u32::MAX is used as "invalid" sentinel for cached root
     let block = BlockStateHot::default();
-    assert_eq!(block.root, u32::MAX, "Default root should be u32::MAX (invalid sentinel)");
+    assert_eq!(
+        block.root,
+        u32::MAX,
+        "Default root should be u32::MAX (invalid sentinel)"
+    );
 
     // After a union operation, root might be cached
-    let mut block_with_cached = BlockStateHot::default();
-    block_with_cached.root = 123; // Simulate cached root
-    assert_ne!(block_with_cached.root, u32::MAX, "Cached root should not be u32::MAX");
+    let block_with_cached = BlockStateHot {
+        root: 123, // Simulate cached root
+        ..Default::default()
+    };
+    assert_ne!(
+        block_with_cached.root,
+        u32::MAX,
+        "Cached root should not be u32::MAX"
+    );
 }
 
 // =============================================================================
@@ -216,18 +240,31 @@ fn test_flag_valid_full_usage() {
     let mut block = BlockStateHot::default();
 
     // Initially no flags set
-    assert_eq!(block.flags & FLAG_VALID_FULL, 0, "FLAG_VALID_FULL should not be set initially");
+    assert_eq!(
+        block.flags & FLAG_VALID_FULL,
+        0,
+        "FLAG_VALID_FULL should not be set initially"
+    );
 
     // Set the flag
     block.flags |= FLAG_VALID_FULL;
-    assert_eq!(block.flags & FLAG_VALID_FULL, FLAG_VALID_FULL, "FLAG_VALID_FULL should be set");
+    assert_eq!(
+        block.flags & FLAG_VALID_FULL,
+        FLAG_VALID_FULL,
+        "FLAG_VALID_FULL should be set"
+    );
 
     // Clear the flag
     block.flags &= !FLAG_VALID_FULL;
-    assert_eq!(block.flags & FLAG_VALID_FULL, 0, "FLAG_VALID_FULL should be cleared");
+    assert_eq!(
+        block.flags & FLAG_VALID_FULL,
+        0,
+        "FLAG_VALID_FULL should be cleared"
+    );
 }
 
 #[test]
+#[allow(clippy::field_reassign_with_default)] // Testing flag modifications explicitly
 fn test_flag_valid_full_with_other_flags() {
     // FLAG_VALID_FULL should be independent of other potential flags
     let mut block = BlockStateHot::default();
@@ -236,11 +273,19 @@ fn test_flag_valid_full_with_other_flags() {
     block.flags = FLAG_VALID_FULL | 0b1010_0000; // Set bit 0 and some high bits
 
     // FLAG_VALID_FULL should still be detectable
-    assert_ne!(block.flags & FLAG_VALID_FULL, 0, "FLAG_VALID_FULL should be detectable with other flags");
+    assert_ne!(
+        block.flags & FLAG_VALID_FULL,
+        0,
+        "FLAG_VALID_FULL should be detectable with other flags"
+    );
 
     // Clear only FLAG_VALID_FULL
     block.flags &= !FLAG_VALID_FULL;
-    assert_eq!(block.flags & FLAG_VALID_FULL, 0, "FLAG_VALID_FULL should be cleared");
+    assert_eq!(
+        block.flags & FLAG_VALID_FULL,
+        0,
+        "FLAG_VALID_FULL should be cleared"
+    );
     assert_eq!(block.flags, 0b1010_0000, "Other flags should remain");
 }
 
@@ -263,12 +308,18 @@ fn test_block_state_hot_array_alignment() {
     for (i, block) in blocks.iter().enumerate() {
         let addr = block as *const _ as usize;
         assert_eq!(
-            addr % 64, 0,
-            "Block {} at address 0x{:x} should be 64-byte aligned", i, addr
+            addr % 64,
+            0,
+            "Block {} at address 0x{:x} should be 64-byte aligned",
+            i,
+            addr
         );
         assert_eq!(
-            addr - base_addr, i * 64,
-            "Block {} should be at offset {} from base", i, i * 64
+            addr - base_addr,
+            i * 64,
+            "Block {} should be at offset {} from base",
+            i,
+            i * 64
         );
     }
 }

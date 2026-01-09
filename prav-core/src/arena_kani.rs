@@ -70,7 +70,10 @@ fn verify_offset_bounds() {
     // Check if allocation would succeed (simplified without alignment)
     if current_offset + alloc_size <= buffer_len {
         let new_offset = current_offset + alloc_size;
-        kani::assert(new_offset <= buffer_len, "new offset must not exceed buffer");
+        kani::assert(
+            new_offset <= buffer_len,
+            "new offset must not exceed buffer",
+        );
     }
 }
 
@@ -120,7 +123,9 @@ fn verify_alignment_selection() {
 
     // Alignments are always power of two and > 0
     kani::assume(t_align > 0 && t_align <= 64 && t_align.is_power_of_two());
-    kani::assume(requested_align > 0 && requested_align <= 128 && requested_align.is_power_of_two());
+    kani::assume(
+        requested_align > 0 && requested_align <= 128 && requested_align.is_power_of_two(),
+    );
 
     // The actual calculation from arena.rs:25
     let actual_align = if requested_align > t_align {

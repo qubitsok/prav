@@ -332,7 +332,7 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
         let stride_y = max_dim.next_power_of_two();
         let stride_shift = stride_y.trailing_zeros();
         let stride_mask = stride_y - 1;
-        
+
         let _blk_stride = stride_y / 64; // Blocks per row in input
 
         // This is slow (scalar), but it's just loading.
@@ -471,8 +471,12 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
         let parents_len = self.parents.len();
         let parents_slice = core::slice::from_raw_parts_mut(parents_ptr, parents_len);
 
-        let queued_mask_slice = core::slice::from_raw_parts_mut(self.queued_mask.as_mut_ptr(), self.queued_mask.len());
-        let dirty_mask_slice = core::slice::from_raw_parts_mut(self.block_dirty_mask.as_mut_ptr(), self.block_dirty_mask.len());
+        let queued_mask_slice =
+            core::slice::from_raw_parts_mut(self.queued_mask.as_mut_ptr(), self.queued_mask.len());
+        let dirty_mask_slice = core::slice::from_raw_parts_mut(
+            self.block_dirty_mask.as_mut_ptr(),
+            self.block_dirty_mask.len(),
+        );
 
         // Disjoint slices for auxiliary
         // These are not actually used by process_block logic except dirty_masks.
@@ -494,6 +498,7 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
             width: 32,
             height: 32,
             stride_y: 32,
+            edge_strides: [1, 32, self.tile_graph.stride_z as u32, 0],
             row_start_mask: 0x0000000100000001,
             row_end_mask: 0x8000000080000000,
 
@@ -564,24 +569,24 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
                 // Iterate boundary pixels of this tile
                 // Boundaries: Row 0, Row 31, Col 0, Col 31.
                 // Duplicate checks are fine (UnionFind handles it).
-                
+
                 // Helper closure to process a pixel
                 let mut process_pixel = |lx: usize, ly: usize| {
                     let gx = base_gx + lx;
                     let gy = base_gy + ly;
-                    
+
                     if gx >= self.width || gy >= self.height {
                         return;
                     }
 
                     // My Global Morton Index
                     let m_idx = morton_encode_2d(gx as u32, gy as u32);
-                    
+
                     // My Tiled Node Index
                     let my_blk_offset = tile_idx * 16;
                     let my_local = ly * 32 + lx;
                     let my_node = (tile_idx * 1024) + my_local;
-                    
+
                     // Check if I am active
                     let my_blk = my_blk_offset + (my_local / 64);
                     let my_bit = my_local % 64;
@@ -590,53 +595,53 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
 
                     // Iterate Neighbors
                     T::for_each_neighbor(m_idx, |n_m| {
-                         let (nx, ny) = morton_decode_2d(n_m);
-                         // Check if neighbor is out of bounds or in DIFFERENT tile
-                         if nx as usize >= self.width || ny as usize >= self.height {
-                             return;
-                         }
+                        let (nx, ny) = morton_decode_2d(n_m);
+                        // Check if neighbor is out of bounds or in DIFFERENT tile
+                        if nx as usize >= self.width || ny as usize >= self.height {
+                            return;
+                        }
 
-                         let n_tx = (nx / 32) as usize;
-                         let n_ty = (ny / 32) as usize;
-                         
-                         // We only stitch inter-tile edges
-                         if n_tx == tx && n_ty == ty {
-                             return;
-                         }
-                         
-                         // Enforce order to avoid double locking/processing if possible
-                         // (u, v) vs (v, u).
-                         // Simple check: process only if neighbor is "larger" coordinate?
-                         // But n_m vs m_idx works.
-                         if n_m < m_idx {
-                             return;
-                         }
+                        let n_tx = (nx / 32) as usize;
+                        let n_ty = (ny / 32) as usize;
 
-                         let n_tile_idx = n_ty * self.tiles_x + n_tx;
-                         let n_lx = (nx % 32) as usize;
-                         let n_ly = (ny % 32) as usize;
-                         
-                         let n_local = n_ly * 32 + n_lx;
-                         let n_blk = n_tile_idx * 16 + (n_local / 64);
-                         let n_bit = n_local % 64;
-                         
-                         let n_block = &*blocks_ptr.add(n_blk);
-                         let n_active = (n_block.occupied & (1 << n_bit)) != 0;
-                         
-                         if my_active || n_active {
-                             let n_node = (n_tile_idx * 1024) + n_local;
-                             
-                             if self.union(my_node as u32, n_node as u32) {
-                                 if !my_active {
-                                     (*blocks_ptr.add(my_blk)).occupied |= 1 << my_bit;
-                                     self.mark_global_dirty(my_blk);
-                                 }
-                                 if !n_active {
-                                     (*blocks_ptr.add(n_blk)).occupied |= 1 << n_bit;
-                                     self.mark_global_dirty(n_blk);
-                                 }
-                             }
-                         }
+                        // We only stitch inter-tile edges
+                        if n_tx == tx && n_ty == ty {
+                            return;
+                        }
+
+                        // Enforce order to avoid double locking/processing if possible
+                        // (u, v) vs (v, u).
+                        // Simple check: process only if neighbor is "larger" coordinate?
+                        // But n_m vs m_idx works.
+                        if n_m < m_idx {
+                            return;
+                        }
+
+                        let n_tile_idx = n_ty * self.tiles_x + n_tx;
+                        let n_lx = (nx % 32) as usize;
+                        let n_ly = (ny % 32) as usize;
+
+                        let n_local = n_ly * 32 + n_lx;
+                        let n_blk = n_tile_idx * 16 + (n_local / 64);
+                        let n_bit = n_local % 64;
+
+                        let n_block = &*blocks_ptr.add(n_blk);
+                        let n_active = (n_block.occupied & (1 << n_bit)) != 0;
+
+                        if my_active || n_active {
+                            let n_node = (n_tile_idx * 1024) + n_local;
+
+                            if self.union(my_node as u32, n_node as u32) {
+                                if !my_active {
+                                    (*blocks_ptr.add(my_blk)).occupied |= 1 << my_bit;
+                                    self.mark_global_dirty(my_blk);
+                                }
+                                if !n_active {
+                                    (*blocks_ptr.add(n_blk)).occupied |= 1 << n_bit;
+                                    self.mark_global_dirty(n_blk);
+                                }
+                            }
+                        }
                     });
                 };
 
@@ -818,7 +823,7 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
         // We assume the path is valid in the topology or at least sufficient for correction.
         // For Square/Rect: Always valid.
         // For Triangular/Honeycomb: Manhattan path exists (using only cardinal moves).
-        
+
         let dx = (vx as isize) - (ux as isize);
         let dy = (vy as isize) - (uy as isize);
 
@@ -918,13 +923,13 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
         // Or calculate relative position.
         let (ux, uy) = self.get_global_coord(src);
         let (vx, vy) = self.get_global_coord(dst);
-        
+
         // Differences (dst - src)
         // Since src < dst (mostly), and layout is Row-Major...
         // vy >= uy.
         // If vy == uy, vx > ux (Right).
         // If vy > uy, vx could be anything.
-        
+
         let dx = (vx as isize) - (ux as isize);
         let dy = (vy as isize) - (uy as isize);
 
@@ -988,147 +993,147 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
                 let edge_idx = base_idx + bit;
                 let u = (edge_idx / 3) as u32;
                 let dir = edge_idx % 3;
-                
+
                 let (ux, uy) = self.get_global_coord(u);
-                
+
                 // Recover v from u and dir
                 let (vx, vy) = match dir {
                     0 => (ux + 1, uy),
                     1 => (ux, uy + 1),
                     2 => {
-                         // Determine diagonal direction based on Topology?
-                         // Or assume fixed diagonal for now?
-                         // TriangularGrid logic:
-                         // if (idx.count_ones() & 1) == 0 -> Up-Right.
-                         // But we are at 'u' looking for neighbor 'v' such that u < v.
-                         // Neighbors of u: Right, Down, maybe Diag.
-                         // If u has Down-Right diagonal: (ux+1, uy+1).
-                         // If u has Down-Left diagonal: (ux-1, uy+1).
-                         // We need T to know which one.
-                         // BUT we are generic.
-                         // We can assume for TriangularGrid, Diag is always "the diagonal".
-                         // However, T::for_each_neighbor is the truth.
-                         // If we assume TriangularGrid matches `prav-core/src/topology.rs`:
-                         // Parity check uses Morton index.
-                         let m_idx = morton_encode_2d(ux as u32, uy as u32);
-                         if (m_idx.count_ones() & 1) == 0 {
-                             // "Has Right and Up". Diag is Up-Right. (x+1, y-1).
-                             // But v must be > u. (y-1) < y. So u > v.
-                             // This edge would be stored at v (the smaller node).
-                             // So if we are at u, we store edges to v > u.
-                             // For this node u, valid v > u neighbors are:
-                             // Right (x+1, y). Down (x, y+1).
-                             // Does it have Down-Right or Down-Left?
-                             // If neighbor w (Down-Left) exists, w < u? No, w.y > u.y. So w > u.
-                             // So Down-Left is a valid forward edge.
-                             // If neighbor z (Down-Right) exists, z > u.
-                             
-                             // We need to know which one 'dir=2' represents.
-                             // In emit_tiled_edge:
-                             // dy=1, dx=1 -> Down-Right.
-                             // dy=1, dx=-1 -> Down-Left.
-                             // Both mapped to dir=2.
-                             // This implies a node has AT MOST one "forward diagonal" neighbor?
-                             // TriangularGrid: 6 neighbors.
-                             // Left, Right, Up, Down.
-                             // Plus ONE diagonal pair.
-                             // If Parity 0: Diag is / (Up-Right, Down-Left).
-                             // Forward neighbors (>u): Right, Down, Down-Left.
-                             // If Parity 1: Diag is \ (Up-Left, Down-Right).
-                             // Forward neighbors (>u): Right, Down, Down-Right.
-                             
-                             // So yes! Only one "Down" diagonal per node.
-                             // Parity 0 -> Down-Left.
-                             // Parity 1 -> Down-Right.
-                             if (m_idx.count_ones() & 1) == 0 {
-                                 (ux.wrapping_sub(1), uy + 1)
-                             } else {
-                                 (ux + 1, uy + 1)
-                             }
-                         } else {
-                             // Copy-paste error in reasoning above?
-                             // Re-read Topology.rs:
-                             // if parity 0: if has_right && has_up { dec(right, Y) -> (x+1, y-1) }
-                             //    This is Up-Right.
-                             //    Does it have Down-Left?
-                             //    No, "else if parity 1: if has_left && has_down { inc(left, Y) -> (x-1, y+1) }"
-                             //    This is Down-Left.
-                             
-                             // So Node Parity 0 has Up-Right.
-                             // Node Parity 1 has Down-Left.
-                             
-                             // Let's verify reciprocal.
-                             // Edge (u, v). u < v.
-                             // v is "Down" relative to u (mostly).
-                             // If Edge is Up-Right from u? v = (x+1, y-1).
-                             // v.y < u.y. So v < u (mostly).
-                             // So Up-Right is a BACKWARD edge.
-                             // We don't store it at u. We store it at v.
-                             
-                             // If Edge is Down-Left from u? v = (x-1, y+1).
-                             // v.y > u.y. So v > u.
-                             // So Down-Left is a FORWARD edge.
-                             // Does Parity 0 have Down-Left? No.
-                             // Does Parity 1 have Down-Left? Yes.
-                             
-                             // So Parity 1 nodes have a generic "Diagonal Forward" (Down-Left).
-                             // What about Parity 0 nodes?
-                             // They have Up-Right (Backward).
-                             // Do they have Down-Right? No.
-                             // So Parity 0 nodes have NO Forward Diagonal?
-                             // Wait.
-                             // Triangular grid is connected.
-                             // Edges are undirected.
-                             // Edge between A(0,0) and B(1,1)?
-                             // A=0 (Parity 0). B=3 (Parity 0).
-                             // A has Up-Right? No (y=0).
-                             // B has Up-Right? (2, 0).
-                             // This assumes specific layout.
-                             
-                             // Let's rely on coordinates from emit_tiled_edge logic.
-                             // We map dir=2 to "The Diagonal".
-                             // But reconstructing requires knowing WHICH diagonal.
-                             // We can use the Parity logic again.
-                             
-                             if (m_idx.count_ones() & 1) != 0 {
-                                 // Parity 1 has Down-Left (Forward).
-                                 (ux.wrapping_sub(1), uy + 1)
-                             } else {
-                                 // Parity 0 has... NO forward diagonal?
-                                 // Check neighbors of Parity 0.
-                                 // Right (x+1, y) -> >u.
-                                 // Down (x, y+1) -> >u.
-                                 // Up-Right (x+1, y-1) -> <u.
-                                 // Left, Up -> <u.
-                                 // So Parity 0 only has Right and Down as forward edges?
-                                 // If so, dir=2 should never happen for Parity 0!
-                                 // UNLESS I messed up u < v logic.
-                                 // If u < v, and v is Up-Right of u?
-                                 // v.y < u.y. v < u. Contradiction.
-                                 
-                                 // So, Parity 0 nodes ONLY have dir=0 and dir=1.
-                                 // Parity 1 nodes have dir=0, dir=1, dir=2 (Down-Left).
-                                 
-                                 // Wait, what about Down-Right?
-                                 // Topology.rs doesn't seem to implement Down-Right for anyone?
-                                 // TriangularGrid:
-                                 // Parity 0: Up-Right.
-                                 // Parity 1: Down-Left.
-                                 // This forms diagonals like ///.
-                                 // So only one type of diagonal exists in the whole grid ( ///// ).
-                                 // (x, y) connected to (x+1, y-1).
-                                 // Equivalent to (x, y) connected to (x-1, y+1).
-                                 // So yes, all diagonals are "Up-Right / Down-Left" type.
-                                 // "Down-Right" (\) does not exist.
-                                 
-                                 // So dir=2 ALWAYS means Down-Left (x-1, y+1).
-                                 (ux.wrapping_sub(1), uy + 1)
-                             }
-                         }
+                        // Determine diagonal direction based on Topology?
+                        // Or assume fixed diagonal for now?
+                        // TriangularGrid logic:
+                        // if (idx.count_ones() & 1) == 0 -> Up-Right.
+                        // But we are at 'u' looking for neighbor 'v' such that u < v.
+                        // Neighbors of u: Right, Down, maybe Diag.
+                        // If u has Down-Right diagonal: (ux+1, uy+1).
+                        // If u has Down-Left diagonal: (ux-1, uy+1).
+                        // We need T to know which one.
+                        // BUT we are generic.
+                        // We can assume for TriangularGrid, Diag is always "the diagonal".
+                        // However, T::for_each_neighbor is the truth.
+                        // If we assume TriangularGrid matches `prav-core/src/topology.rs`:
+                        // Parity check uses Morton index.
+                        let m_idx = morton_encode_2d(ux as u32, uy as u32);
+                        if (m_idx.count_ones() & 1) == 0 {
+                            // "Has Right and Up". Diag is Up-Right. (x+1, y-1).
+                            // But v must be > u. (y-1) < y. So u > v.
+                            // This edge would be stored at v (the smaller node).
+                            // So if we are at u, we store edges to v > u.
+                            // For this node u, valid v > u neighbors are:
+                            // Right (x+1, y). Down (x, y+1).
+                            // Does it have Down-Right or Down-Left?
+                            // If neighbor w (Down-Left) exists, w < u? No, w.y > u.y. So w > u.
+                            // So Down-Left is a valid forward edge.
+                            // If neighbor z (Down-Right) exists, z > u.
+
+                            // We need to know which one 'dir=2' represents.
+                            // In emit_tiled_edge:
+                            // dy=1, dx=1 -> Down-Right.
+                            // dy=1, dx=-1 -> Down-Left.
+                            // Both mapped to dir=2.
+                            // This implies a node has AT MOST one "forward diagonal" neighbor?
+                            // TriangularGrid: 6 neighbors.
+                            // Left, Right, Up, Down.
+                            // Plus ONE diagonal pair.
+                            // If Parity 0: Diag is / (Up-Right, Down-Left).
+                            // Forward neighbors (>u): Right, Down, Down-Left.
+                            // If Parity 1: Diag is \ (Up-Left, Down-Right).
+                            // Forward neighbors (>u): Right, Down, Down-Right.
+
+                            // So yes! Only one "Down" diagonal per node.
+                            // Parity 0 -> Down-Left.
+                            // Parity 1 -> Down-Right.
+                            if (m_idx.count_ones() & 1) == 0 {
+                                (ux.wrapping_sub(1), uy + 1)
+                            } else {
+                                (ux + 1, uy + 1)
+                            }
+                        } else {
+                            // Copy-paste error in reasoning above?
+                            // Re-read Topology.rs:
+                            // if parity 0: if has_right && has_up { dec(right, Y) -> (x+1, y-1) }
+                            //    This is Up-Right.
+                            //    Does it have Down-Left?
+                            //    No, "else if parity 1: if has_left && has_down { inc(left, Y) -> (x-1, y+1) }"
+                            //    This is Down-Left.
+
+                            // So Node Parity 0 has Up-Right.
+                            // Node Parity 1 has Down-Left.
+
+                            // Let's verify reciprocal.
+                            // Edge (u, v). u < v.
+                            // v is "Down" relative to u (mostly).
+                            // If Edge is Up-Right from u? v = (x+1, y-1).
+                            // v.y < u.y. So v < u (mostly).
+                            // So Up-Right is a BACKWARD edge.
+                            // We don't store it at u. We store it at v.
+
+                            // If Edge is Down-Left from u? v = (x-1, y+1).
+                            // v.y > u.y. So v > u.
+                            // So Down-Left is a FORWARD edge.
+                            // Does Parity 0 have Down-Left? No.
+                            // Does Parity 1 have Down-Left? Yes.
+
+                            // So Parity 1 nodes have a generic "Diagonal Forward" (Down-Left).
+                            // What about Parity 0 nodes?
+                            // They have Up-Right (Backward).
+                            // Do they have Down-Right? No.
+                            // So Parity 0 nodes have NO Forward Diagonal?
+                            // Wait.
+                            // Triangular grid is connected.
+                            // Edges are undirected.
+                            // Edge between A(0,0) and B(1,1)?
+                            // A=0 (Parity 0). B=3 (Parity 0).
+                            // A has Up-Right? No (y=0).
+                            // B has Up-Right? (2, 0).
+                            // This assumes specific layout.
+
+                            // Let's rely on coordinates from emit_tiled_edge logic.
+                            // We map dir=2 to "The Diagonal".
+                            // But reconstructing requires knowing WHICH diagonal.
+                            // We can use the Parity logic again.
+
+                            if (m_idx.count_ones() & 1) != 0 {
+                                // Parity 1 has Down-Left (Forward).
+                                (ux.wrapping_sub(1), uy + 1)
+                            } else {
+                                // Parity 0 has... NO forward diagonal?
+                                // Check neighbors of Parity 0.
+                                // Right (x+1, y) -> >u.
+                                // Down (x, y+1) -> >u.
+                                // Up-Right (x+1, y-1) -> <u.
+                                // Left, Up -> <u.
+                                // So Parity 0 only has Right and Down as forward edges?
+                                // If so, dir=2 should never happen for Parity 0!
+                                // UNLESS I messed up u < v logic.
+                                // If u < v, and v is Up-Right of u?
+                                // v.y < u.y. v < u. Contradiction.
+
+                                // So, Parity 0 nodes ONLY have dir=0 and dir=1.
+                                // Parity 1 nodes have dir=0, dir=1, dir=2 (Down-Left).
+
+                                // Wait, what about Down-Right?
+                                // Topology.rs doesn't seem to implement Down-Right for anyone?
+                                // TriangularGrid:
+                                // Parity 0: Up-Right.
+                                // Parity 1: Down-Left.
+                                // This forms diagonals like ///.
+                                // So only one type of diagonal exists in the whole grid ( ///// ).
+                                // (x, y) connected to (x+1, y-1).
+                                // Equivalent to (x, y) connected to (x-1, y+1).
+                                // So yes, all diagonals are "Up-Right / Down-Left" type.
+                                // "Down-Right" (\) does not exist.
+
+                                // So dir=2 ALWAYS means Down-Left (x-1, y+1).
+                                (ux.wrapping_sub(1), uy + 1)
+                            }
+                        }
                     }
                     _ => (ux, uy),
                 };
-                
+
                 // Map global v back to tiled u32
                 if vx < self.width && vy < self.height {
                     let v_tx = vx / 32;
@@ -1136,10 +1141,13 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
                     let v_lx = vx % 32;
                     let v_ly = vy % 32;
                     let v_node = (v_ty * self.tiles_x + v_tx) * 1024 + (v_ly * 32 + v_lx);
-                    
+
                     if count < corrections.len() {
                         unsafe {
-                            *corrections.get_unchecked_mut(count) = EdgeCorrection { u, v: v_node as u32 };
+                            *corrections.get_unchecked_mut(count) = EdgeCorrection {
+                                u,
+                                v: v_node as u32,
+                            };
                         }
                         count += 1;
                     }
@@ -1184,7 +1192,6 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
 }
 
 #[cfg(test)]
-
 mod tests {
 
     use super::*;

@@ -13,7 +13,7 @@ const MAX_DIM: usize = 64;
 /// Maximum nodes for proofs (bounded for tractability)
 const MAX_NODES: usize = MAX_DIM * MAX_DIM;
 /// Maximum blocks (64 nodes per block)
-const MAX_BLOCKS: usize = (MAX_NODES + 63) / 64;
+const MAX_BLOCKS: usize = MAX_NODES.div_ceil(64);
 
 // ============================================================================
 // Proof 1: Block/bit round-trip
@@ -76,7 +76,7 @@ fn verify_tiled_coordinate_round_trip() {
     kani::assume(y < height);
 
     // Compute tile configuration
-    let tiles_x = (width + 31) / 32;
+    let tiles_x = width.div_ceil(32);
 
     // Forward mapping: (x, y) → node_idx (from tiled.rs)
     let tx = x / 32;
@@ -312,7 +312,7 @@ fn verify_edge_index_bounds() {
 
     // Edge capacity calculation (from state.rs:159-160)
     let num_edges = total_nodes * 3;
-    let num_edge_words = (num_edges + 63) / 64;
+    let num_edge_words = num_edges.div_ceil(64);
     let edge_capacity = num_edge_words * 64;
 
     // Edge index calculation
@@ -364,10 +364,7 @@ fn verify_mark_block_dirty_idempotent() {
     mask2 |= 1u64 << mask_bit;
 
     // Invariant: Both should produce identical result
-    kani::assert(
-        mask1 == mask2,
-        "mark_block_dirty must be idempotent",
-    );
+    kani::assert(mask1 == mask2, "mark_block_dirty must be idempotent");
 
     // Additional invariant: the bit should be set
     kani::assert(
@@ -431,16 +428,16 @@ fn verify_stride_calculation_bounds() {
     let stride_y = dim_pow2;
 
     // Invariant 1: stride_y must be power of 2
-    kani::assert(
-        stride_y.is_power_of_two(),
-        "stride_y must be power of two",
-    );
+    kani::assert(stride_y.is_power_of_two(), "stride_y must be power of two");
 
     // Invariant 2: stride_y must be >= max_dim
     kani::assert(stride_y >= max_dim, "stride_y must be >= max_dim");
 
     // Invariant 3: stride_y must not overflow reasonable bounds
-    kani::assert(stride_y <= 2048, "stride_y must be bounded for 1024 max dim");
+    kani::assert(
+        stride_y <= 2048,
+        "stride_y must be bounded for 1024 max dim",
+    );
 
     // Invariant 4: total nodes should not overflow
     let total_nodes = stride_y * stride_y;

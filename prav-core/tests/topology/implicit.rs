@@ -36,7 +36,7 @@ fn run_test_scenario<T: Topology, const STRIDE_Y: usize>(
     } else {
         pow2 * pow2
     };
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
     let mut dense_defects = vec![0u64; num_blocks];
 
     for &def in defects {

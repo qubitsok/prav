@@ -89,7 +89,8 @@ fn has_syndrome(syndromes: &[u64], index: u32) -> bool {
 // =============================================================================
 
 fn print_lattice() {
-    println!("
+    println!(
+        "
     The 4×4 Honeycomb Lattice
     ═══════════════════════════
 
@@ -123,7 +124,8 @@ fn print_lattice() {
     This creates the sparse honeycomb connectivity.
 
     Node parities and vertical directions:
-");
+"
+    );
     for y in 0..HEIGHT {
         print!("    y={}: ", y);
         for x in 0..WIDTH {
@@ -167,13 +169,19 @@ fn print_corrections(corrections: &[EdgeCorrection], count: usize) {
     for c in &corrections[..count] {
         let (ux, uy) = coords(c.u);
         if c.v == u32::MAX {
-            println!("      - Edge from ({},{}) [{}] to BOUNDARY",
-                     ux, uy, vertical_direction(c.u));
+            println!(
+                "      - Edge from ({},{}) [{}] to BOUNDARY",
+                ux,
+                uy,
+                vertical_direction(c.u)
+            );
         } else {
             let (vx, vy) = coords(c.v);
             let edge_type = if ux == vx { "VERTICAL" } else { "horizontal" };
-            println!("      - Edge between ({},{}) and ({},{}) [{}]",
-                     ux, uy, vx, vy, edge_type);
+            println!(
+                "      - Edge between ({},{}) and ({},{}) [{}]",
+                ux, uy, vx, vy, edge_type
+            );
         }
     }
     println!();
@@ -183,18 +191,31 @@ fn print_neighbors(x: usize, y: usize) {
     let i = idx(x, y);
     let is_even = i.count_ones() % 2 == 0;
 
-    println!("    Neighbors of ({},{}) [index={}, parity={}, vertical={}]:",
-             x, y, i, if is_even { "even" } else { "odd" },
-             if is_even { "UP" } else { "DOWN" });
+    println!(
+        "    Neighbors of ({},{}) [index={}, parity={}, vertical={}]:",
+        x,
+        y,
+        i,
+        if is_even { "even" } else { "odd" },
+        if is_even { "UP" } else { "DOWN" }
+    );
 
     // Horizontal neighbors (always present if in bounds)
     if x > 0 {
-        println!("      - LEFT:  ({},{}) [horizontal - always present]", x - 1, y);
+        println!(
+            "      - LEFT:  ({},{}) [horizontal - always present]",
+            x - 1,
+            y
+        );
     } else {
         println!("      - LEFT:  (boundary)");
     }
     if x < WIDTH - 1 {
-        println!("      - RIGHT: ({},{}) [horizontal - always present]", x + 1, y);
+        println!(
+            "      - RIGHT: ({},{}) [horizontal - always present]",
+            x + 1,
+            y
+        );
     } else {
         println!("      - RIGHT: (boundary)");
     }
@@ -223,11 +244,13 @@ fn print_neighbors(x: usize, y: usize) {
 // =============================================================================
 
 fn main() {
-    println!("
+    println!(
+        "
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║         QUANTUM ERROR CORRECTION TUTORIAL: Honeycomb Lattice              ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
-");
+"
+    );
 
     // =========================================================================
     // STEP 1: Understand the Honeycomb Lattice
@@ -269,7 +292,7 @@ fn main() {
     println!("    This is the SPARSEST 2D topology in prav-core!");
     println!();
 
-    let num_blocks = (STRIDE_Y * STRIDE_Y + 63) / 64;
+    let num_blocks = (STRIDE_Y * STRIDE_Y).div_ceil(64);
     let mut syndromes = vec![0u64; num_blocks];
     let mut corrections = vec![EdgeCorrection::default(); WIDTH * HEIGHT * 2];
 
@@ -280,7 +303,8 @@ fn main() {
     println!("  SCENARIO 1: Horizontal Error (Universal Connection)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     An error between horizontally adjacent nodes.
     Horizontal connections exist regardless of parity.
 
@@ -293,7 +317,8 @@ fn main() {
     y=2 ─── ^ ─── v ─── ^ ─── v ───
 
     Both nodes have horizontal neighbors regardless of parity.
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(1, 1)); // Even parity
@@ -319,7 +344,8 @@ fn main() {
     println!("  SCENARIO 2: Vertical Error - Even Parity Node (Connects UP)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     An error on the vertical edge from an EVEN parity node.
     Even nodes connect UP only.
 
@@ -332,7 +358,8 @@ fn main() {
     y=2 ─── ^ ─── v ─── ^ ─── v ───
 
     Node (1,1) has index 5, popcount=2, EVEN → connects UP to (1,0)
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(1, 1)); // Even parity - connects UP
@@ -341,8 +368,12 @@ fn main() {
     print_syndromes_grid(&syndromes);
 
     println!("    Parity check:");
-    println!("      - Node (1,1): index={}, popcount={}, parity={}",
-             idx(1, 1), idx(1, 1).count_ones(), parity(idx(1, 1)));
+    println!(
+        "      - Node (1,1): index={}, popcount={}, parity={}",
+        idx(1, 1),
+        idx(1, 1).count_ones(),
+        parity(idx(1, 1))
+    );
     println!("      - Even parity → vertical neighbor is UP at (1,0)");
     println!();
 
@@ -360,7 +391,8 @@ fn main() {
     println!("  SCENARIO 3: Vertical Error - Odd Parity Node (Connects DOWN)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     An error on the vertical edge from an ODD parity node.
     Odd nodes connect DOWN only.
 
@@ -373,7 +405,8 @@ fn main() {
     y=2 ─── ^ ─── v ─── ^ ─── v ───
 
     Node (1,0) has index 1, popcount=1, ODD → connects DOWN to (1,1)
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(1, 0)); // Odd parity - connects DOWN
@@ -382,8 +415,12 @@ fn main() {
     print_syndromes_grid(&syndromes);
 
     println!("    Parity check:");
-    println!("      - Node (1,0): index={}, popcount={}, parity={}",
-             idx(1, 0), idx(1, 0).count_ones(), parity(idx(1, 0)));
+    println!(
+        "      - Node (1,0): index={}, popcount={}, parity={}",
+        idx(1, 0),
+        idx(1, 0).count_ones(),
+        parity(idx(1, 0))
+    );
     println!("      - Odd parity → vertical neighbor is DOWN at (1,1)");
     println!();
 
@@ -401,7 +438,8 @@ fn main() {
     println!("  SCENARIO 4: Vertically Aligned but NOT Directly Connected");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     IMPORTANT: In honeycomb, not all vertical neighbors are connected!
 
            x=0   x=1   x=2   x=3
@@ -416,7 +454,8 @@ fn main() {
 
     These two nodes are NOT directly connected vertically!
     The decoder must find an alternative path (horizontal then vertical).
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(0, 0)); // Even - connects UP (boundary)
@@ -425,10 +464,16 @@ fn main() {
     print_syndromes_grid(&syndromes);
 
     println!("    Parity analysis:");
-    println!("      - (0,0): index={}, parity={} → connects UP (boundary)",
-             idx(0, 0), parity(idx(0, 0)));
-    println!("      - (0,1): index={}, parity={} → connects DOWN (to y=2)",
-             idx(0, 1), parity(idx(0, 1)));
+    println!(
+        "      - (0,0): index={}, parity={} → connects UP (boundary)",
+        idx(0, 0),
+        parity(idx(0, 0))
+    );
+    println!(
+        "      - (0,1): index={}, parity={} → connects DOWN (to y=2)",
+        idx(0, 1),
+        parity(idx(0, 1))
+    );
     println!("      - NO direct vertical edge between them!");
     println!();
 
@@ -450,7 +495,8 @@ fn main() {
     println!("  SCENARIO 5: Single Syndrome - Boundary Matching");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     A single syndrome must match to a boundary.
     With only 3 neighbors, there are fewer paths to boundaries.
 
@@ -463,7 +509,8 @@ fn main() {
 
     Node (1,1) has 3 neighbors: left (0,1), right (2,1), up (1,0)
     Shortest boundary path depends on position.
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(1, 1));
@@ -484,7 +531,8 @@ fn main() {
     println!("  SUMMARY: Honeycomb Lattice Key Points");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     1. MINIMAL CONNECTIVITY
        - Only 3 neighbors per node (minimum for 2D QEC)
        - 2 horizontal (left/right) - always present
@@ -514,5 +562,6 @@ fn main() {
     connectivity. This is valuable for hardware-constrained implementations
     and provides theoretical insights into the minimum requirements for
     topological error correction.
-");
+"
+    );
 }

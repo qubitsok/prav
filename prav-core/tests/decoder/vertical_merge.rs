@@ -22,7 +22,7 @@ fn test_vertical_merge_explicit_loop() {
         block.occupied = (1 << 0) | (1 << 32);
 
         // Ensure roots are distinct
-        state.parents[base_global + 0] = (base_global + 0) as u32;
+        state.parents[base_global] = base_global as u32;
         state.parents[base_global + 32] = (base_global + 32) as u32;
 
         // Restrict valid mask to only bits 0 and 32 to prevent spreading to bit 1
@@ -34,7 +34,7 @@ fn test_vertical_merge_explicit_loop() {
         state.process_block_small_stride::<false>(blk_idx);
     }
 
-    let root0 = state.find((base_global + 0) as u32);
+    let root0 = state.find(base_global as u32);
     let root32 = state.find((base_global + 32) as u32);
 
     assert_eq!(root0, root32, "Vertical pair (0, 32) should be merged");

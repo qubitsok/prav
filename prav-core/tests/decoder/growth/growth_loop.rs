@@ -372,7 +372,7 @@ fn test_distant_defects() {
     let count = decoder.decode(&mut corrections);
 
     // Just verify it completes
-        assert!(count > 0);
+    assert!(count > 0);
 }
 
 /// Test active_block_mask tracking in small grid mode.
@@ -400,12 +400,18 @@ fn test_active_block_mask_tracking() {
     decoder.load_dense_syndromes(&syndromes);
 
     // After loading, active_block_mask should have bits set
-    assert!(decoder.active_block_mask != 0, "Expected active blocks after syndrome load");
+    assert!(
+        decoder.active_block_mask != 0,
+        "Expected active blocks after syndrome load"
+    );
 
     decoder.grow_clusters();
 
     // After growth completes, active_block_mask should be 0
-    assert_eq!(decoder.active_block_mask, 0, "Expected no active blocks after growth");
+    assert_eq!(
+        decoder.active_block_mask, 0,
+        "Expected no active blocks after growth"
+    );
 
     let mut corrections = vec![EdgeCorrection::default(); w * h * 4];
     let count = decoder.decode(&mut corrections);
@@ -455,7 +461,7 @@ fn test_3d_grid_large_blocks() {
         let count = decoder.decode(&mut corrections);
 
         // Verify completion
-            assert!(count > 0);
+        assert!(count > 0);
     }
     // If not large grid, test passes (the 3D config might still be small)
 }

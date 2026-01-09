@@ -16,6 +16,4 @@
 
 pub mod dem_types;
 
-pub use dem_types::{
-    CompiledDem, Detector, ErrorMechanism, ErrorTarget, LogicalObservable,
-};
+pub use dem_types::{CompiledDem, Detector, ErrorMechanism, ErrorTarget, LogicalObservable};

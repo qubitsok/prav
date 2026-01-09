@@ -136,7 +136,14 @@ unsafe fn union_in_slice(
 ) -> bool {
     let root_u = find_in_slice(parents, u, block_dirty_mask);
     let root_v = find_in_slice(parents, v, block_dirty_mask);
-    union_roots_in_slice(parents, root_u, root_v, blocks_state, block_dirty_mask, block_offset)
+    union_roots_in_slice(
+        parents,
+        root_u,
+        root_v,
+        blocks_state,
+        block_dirty_mask,
+        block_offset,
+    )
 }
 
 #[inline(always)]
@@ -346,7 +353,14 @@ unsafe fn merge_mono_32_slice(
             continue;
         }
 
-        if union_in_slice(parents, target, root_r, blocks_state, block_dirty_mask, block_offset) {
+        if union_in_slice(
+            parents,
+            target,
+            root_r,
+            blocks_state,
+            block_dirty_mask,
+            block_offset,
+        ) {
             expanded = true;
         }
     }

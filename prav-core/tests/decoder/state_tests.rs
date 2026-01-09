@@ -91,7 +91,7 @@ fn test_row_masks_stride_8() {
     // For stride 8, row_start_mask should have bit 0, 8, 16, 24, 32, 40, 48, 56 set
     // row_end_mask should have bit 7, 15, 23, 31, 39, 47, 55, 63 set
     let expected_start: u64 = 0x0101_0101_0101_0101; // Every 8th bit starting at 0
-    let expected_end: u64 = 0x8080_8080_8080_8080;   // Every 8th bit starting at 7
+    let expected_end: u64 = 0x8080_8080_8080_8080; // Every 8th bit starting at 7
 
     assert_eq!(
         decoder.row_start_mask, expected_start,
@@ -179,7 +179,8 @@ fn test_valid_mask_full_block() {
         "Block 0 should have all valid bits set for 8x8 grid"
     );
     assert_ne!(
-        decoder.blocks_state[0].flags & FLAG_VALID_FULL, 0,
+        decoder.blocks_state[0].flags & FLAG_VALID_FULL,
+        0,
         "FLAG_VALID_FULL should be set for full block"
     );
 }
@@ -202,7 +203,8 @@ fn test_valid_mask_partial_block() {
         "Block 0 should have correct valid_mask for 6x4 grid"
     );
     assert_eq!(
-        decoder.blocks_state[0].flags & FLAG_VALID_FULL, 0,
+        decoder.blocks_state[0].flags & FLAG_VALID_FULL,
+        0,
         "FLAG_VALID_FULL should NOT be set for partial block"
     );
 }
@@ -217,7 +219,10 @@ fn test_valid_mask_multi_block() {
     // Each block should have specific valid_mask pattern
 
     // Check that we have multiple blocks
-    assert!(decoder.blocks_state.len() >= 16, "Should have at least 16 blocks");
+    assert!(
+        decoder.blocks_state.len() >= 16,
+        "Should have at least 16 blocks"
+    );
 
     // First block should be fully valid
     assert_eq!(
@@ -261,8 +266,7 @@ fn test_effective_mask_initial() {
 
     // Initially, effective_mask should equal valid_mask (no erasures)
     assert_eq!(
-        decoder.blocks_state[0].effective_mask,
-        decoder.blocks_state[0].valid_mask,
+        decoder.blocks_state[0].effective_mask, decoder.blocks_state[0].valid_mask,
         "effective_mask should equal valid_mask initially"
     );
     assert_eq!(
@@ -312,8 +316,14 @@ fn test_load_erasures_partial_array() {
 
     // Remaining blocks should have no erasures and full effective_mask
     for block in decoder.blocks_state.iter().skip(2) {
-        assert_eq!(block.erasure_mask, 0, "Blocks beyond erasures array should have no erasures");
-        assert_eq!(block.effective_mask, block.valid_mask, "effective_mask should equal valid_mask");
+        assert_eq!(
+            block.erasure_mask, 0,
+            "Blocks beyond erasures array should have no erasures"
+        );
+        assert_eq!(
+            block.effective_mask, block.valid_mask,
+            "effective_mask should equal valid_mask"
+        );
     }
 }
 
@@ -350,13 +360,15 @@ fn test_mark_block_dirty_single() {
 
     // Check that bit 5 is set in word 0
     assert_ne!(
-        decoder.block_dirty_mask[0] & (1 << 5), 0,
+        decoder.block_dirty_mask[0] & (1 << 5),
+        0,
         "Block 5 should be marked dirty"
     );
 
     // Other bits should be clear
     assert_eq!(
-        decoder.block_dirty_mask[0] & !(1 << 5), 0,
+        decoder.block_dirty_mask[0] & !(1 << 5),
+        0,
         "Only block 5 should be dirty"
     );
 }
@@ -375,7 +387,8 @@ fn test_mark_block_dirty_multiple_words() {
 
     // Check word 1, bit 1
     assert_ne!(
-        decoder.block_dirty_mask[1] & (1 << 1), 0,
+        decoder.block_dirty_mask[1] & (1 << 1),
+        0,
         "Block 65 should be bit 1 in word 1"
     );
 }
@@ -396,7 +409,10 @@ fn test_mark_block_dirty_idempotent() {
     decoder.mark_block_dirty(0);
     let second_state = decoder.block_dirty_mask[0];
 
-    assert_eq!(first_state, second_state, "mark_block_dirty should be idempotent");
+    assert_eq!(
+        first_state, second_state,
+        "mark_block_dirty should be idempotent"
+    );
 }
 
 // =============================================================================
@@ -423,7 +439,10 @@ fn test_is_small_grid_boundary_case() {
     let decoder = create_decoder::<64>(&mut arena, 64, 64);
 
     // 64 data blocks + 1 boundary block = 65 blocks
-    assert!(decoder.is_small_grid(), "64x64 grid (65 blocks) should still be small");
+    assert!(
+        decoder.is_small_grid(),
+        "64x64 grid (65 blocks) should still be small"
+    );
 }
 
 #[test]
@@ -454,7 +473,8 @@ fn test_push_next_sets_bit() {
     decoder.push_next(7);
 
     assert_ne!(
-        decoder.queued_mask[0] & (1 << 7), 0,
+        decoder.queued_mask[0] & (1 << 7),
+        0,
         "Block 7 should be queued"
     );
 }
@@ -475,7 +495,8 @@ fn test_push_next_multiple_blocks() {
 
     let expected = (1u64 << 0) | (1u64 << 3) | (1u64 << 15);
     assert_eq!(
-        decoder.queued_mask[0] & expected, expected,
+        decoder.queued_mask[0] & expected,
+        expected,
         "All pushed blocks should be queued"
     );
 }
@@ -503,13 +524,26 @@ fn test_sparse_reset_clears_dirty_blocks() {
     decoder.sparse_reset();
 
     // Block 0 should be cleared
-    assert_eq!(decoder.blocks_state[0].boundary, 0, "boundary should be reset");
-    assert_eq!(decoder.blocks_state[0].occupied, 0, "occupied should be reset");
-    assert_eq!(decoder.blocks_state[0].root, u32::MAX, "root should be invalidated");
+    assert_eq!(
+        decoder.blocks_state[0].boundary, 0,
+        "boundary should be reset"
+    );
+    assert_eq!(
+        decoder.blocks_state[0].occupied, 0,
+        "occupied should be reset"
+    );
+    assert_eq!(
+        decoder.blocks_state[0].root,
+        u32::MAX,
+        "root should be invalidated"
+    );
     assert_eq!(decoder.defect_mask[0], 0, "defect_mask should be cleared");
 
     // Dirty mask should be cleared
-    assert_eq!(decoder.block_dirty_mask[0], 0, "dirty mask should be cleared");
+    assert_eq!(
+        decoder.block_dirty_mask[0], 0,
+        "dirty mask should be cleared"
+    );
 }
 
 #[test]
@@ -529,8 +563,14 @@ fn test_sparse_reset_preserves_clean_blocks() {
     decoder.sparse_reset();
 
     // Block 0 should NOT be touched (not dirty)
-    assert_eq!(decoder.blocks_state[0].boundary, 0xDEAD, "clean block boundary should be preserved");
-    assert_eq!(decoder.blocks_state[0].occupied, 0xBEEF, "clean block occupied should be preserved");
+    assert_eq!(
+        decoder.blocks_state[0].boundary, 0xDEAD,
+        "clean block boundary should be preserved"
+    );
+    assert_eq!(
+        decoder.blocks_state[0].occupied, 0xBEEF,
+        "clean block occupied should be preserved"
+    );
 }
 
 #[test]
@@ -599,9 +639,18 @@ fn test_sparse_reset_clears_masks() {
     decoder.sparse_reset();
 
     // All masks should be cleared
-    assert!(decoder.queued_mask.iter().all(|&w| w == 0), "queued_mask should be cleared");
-    assert!(decoder.active_mask.iter().all(|&w| w == 0), "active_mask should be cleared");
-    assert_eq!(decoder.active_block_mask, 0, "active_block_mask should be cleared");
+    assert!(
+        decoder.queued_mask.iter().all(|&w| w == 0),
+        "queued_mask should be cleared"
+    );
+    assert!(
+        decoder.active_mask.iter().all(|&w| w == 0),
+        "active_mask should be cleared"
+    );
+    assert_eq!(
+        decoder.active_block_mask, 0,
+        "active_block_mask should be cleared"
+    );
 }
 
 // =============================================================================

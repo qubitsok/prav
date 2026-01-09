@@ -27,7 +27,7 @@ fn run_test_scenario<const STRIDE_Y: usize>(w: usize, h: usize, defects: &[u32],
     let stride_y = pow2;
     let total_nodes = stride_y * stride_y;
 
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
     let mut dense_defects = vec![0u64; num_blocks];
 
     for &d in defects {

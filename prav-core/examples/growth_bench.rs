@@ -1,8 +1,8 @@
 use clap::{Parser, ValueEnum};
 use prav_core::arena::Arena;
 use prav_core::decoder::EdgeCorrection;
-use prav_core::testing_grids::{GridConfig, TestGrids, ERROR_PROBS};
-use prav_core::topology::{SquareGrid, TriangularGrid, HoneycombGrid, Topology};
+use prav_core::testing_grids::{ERROR_PROBS, GridConfig, TestGrids};
+use prav_core::topology::{HoneycombGrid, SquareGrid, Topology, TriangularGrid};
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use std::time::Instant;
@@ -30,7 +30,7 @@ enum TopologyArg {
 fn generate_defects(width: usize, height: usize, stride_y: usize, p: f64, seed: u64) -> Vec<u64> {
     let alloc_size = height * stride_y;
     let alloc_nodes = alloc_size + 1;
-    let num_blocks = (alloc_nodes + 63) / 64;
+    let num_blocks = alloc_nodes.div_ceil(64);
 
     let mut rng = StdRng::seed_from_u64(seed);
     let mut defects = vec![0u64; num_blocks];
@@ -69,7 +69,7 @@ fn verify_matching_tiled(
     stride_y: usize,
 ) -> usize {
     buffer.copy_from_slice(dense_input);
-    let tiles_x = (width + 31) / 32;
+    let tiles_x = width.div_ceil(32);
 
     for c in corrections {
         let u = map_tiled_to_row(c.u, tiles_x, stride_y);
@@ -111,7 +111,7 @@ fn run_tiled_growth_bench<T: Topology>(
 
     // Scratch buffer for verification
     let defects_alloc_nodes = height * stride_y + 1;
-    let num_blocks = (defects_alloc_nodes + 63) / 64;
+    let num_blocks = defects_alloc_nodes.div_ceil(64);
     let mut scratch_buffer = vec![0u64; num_blocks];
 
     let mut total_duration = std::time::Duration::default();
@@ -170,15 +170,29 @@ fn run_tiled_growth_bench<T: Topology>(
 
     println!(
         "{:<w0$} | {:<w1$} | {:<w2$} | {:<w3$} | {:<w4$.2} | {:<w5$.2} | {:<w6$.2} | {:<w7$.4}",
-        clean_name, dims, nodes_str, p_str, avg, avg_grow, avg_peel, avg_remaining,
-        w0=w_shape, w1=w_dims, w2=w_nodes, w3=w_p, w4=w_avg, w5=w_grow, w6=w_peel, w7=w_rem
+        clean_name,
+        dims,
+        nodes_str,
+        p_str,
+        avg,
+        avg_grow,
+        avg_peel,
+        avg_remaining,
+        w0 = w_shape,
+        w1 = w_dims,
+        w2 = w_nodes,
+        w3 = w_p,
+        w4 = w_avg,
+        w5 = w_grow,
+        w6 = w_peel,
+        w7 = w_rem
     );
 }
 
 fn run_topology_suite<T: Topology, const STRIDE_Y: usize>(
-    config: GridConfig, 
+    config: GridConfig,
     topo_name: &str,
-    widths: (usize, usize, usize, usize)
+    widths: (usize, usize, usize, usize),
 ) {
     for &p in &ERROR_PROBS {
         let mut defects_list = Vec::with_capacity(CYCLES);
@@ -202,7 +216,7 @@ fn run_topology_suite<T: Topology, const STRIDE_Y: usize>(
 
 fn run_suite<const STRIDE_Y: usize>(config: GridConfig, topo: TopologyArg) {
     use std::cmp::max;
-    
+
     // Calculate column widths
     let mut w_shape = "Shape".len();
     let mut w_dims = "Dims".len();
@@ -213,7 +227,10 @@ fn run_suite<const STRIDE_Y: usize>(config: GridConfig, topo: TopologyArg) {
     let mut check_config = |c: GridConfig, name: &str| {
         w_shape = max(w_shape, name.len());
         w_dims = max(w_dims, format!("{}x{}", c.width, c.height).len());
-        w_nodes = max(w_nodes, format!("{} ({})", c.actual_nodes(), c.target_nodes).len());
+        w_nodes = max(
+            w_nodes,
+            format!("{} ({})", c.actual_nodes(), c.target_nodes).len(),
+        );
     };
 
     if matches!(topo, TopologyArg::Square | TopologyArg::All) {
@@ -240,13 +257,29 @@ fn run_suite<const STRIDE_Y: usize>(config: GridConfig, topo: TopologyArg) {
 
     // Print Header
     println!();
-    println!("Benchmarking Suite: Grid {}x{} (~{} nodes, Stride {})",
-        config.width, config.height, config.target_nodes, config.stride_y);
+    println!(
+        "Benchmarking Suite: Grid {}x{} (~{} nodes, Stride {})",
+        config.width, config.height, config.target_nodes, config.stride_y
+    );
     println!("Cycles: {}", CYCLES);
     let header = format!(
         "{:<w0$} | {:<w1$} | {:<w2$} | {:<w3$} | {:<w4$} | {:<w5$} | {:<w6$} | {:<w7$}",
-        "Shape", "Dims", "Nodes (Target)", "p", "Avg(us)", "Grow", "Peel", "Rem",
-        w0=w_shape, w1=w_dims, w2=w_nodes, w3=w_p, w4=w_avg, w5=w_grow, w6=w_peel, w7=w_rem
+        "Shape",
+        "Dims",
+        "Nodes (Target)",
+        "p",
+        "Avg(us)",
+        "Grow",
+        "Peel",
+        "Rem",
+        w0 = w_shape,
+        w1 = w_dims,
+        w2 = w_nodes,
+        w3 = w_p,
+        w4 = w_avg,
+        w5 = w_grow,
+        w6 = w_peel,
+        w7 = w_rem
     );
     println!("{}", header);
     println!("{}", "-".repeat(header.len()));
@@ -256,18 +289,18 @@ fn run_suite<const STRIDE_Y: usize>(config: GridConfig, topo: TopologyArg) {
     if matches!(topo, TopologyArg::Square | TopologyArg::All) {
         run_topology_suite::<SquareGrid, STRIDE_Y>(config, "Square", widths);
     }
-    
+
     // Rectangle ~3:1
     if matches!(topo, TopologyArg::Rectangle | TopologyArg::All) {
         let rect_config = config.to_rectangular(3.0);
-        
+
         let rect_stride = rect_config.stride_y;
-        
+
         for &p in &ERROR_PROBS {
             let mut defects_list = Vec::with_capacity(CYCLES);
             let mut rng_seed = 12345;
             for _ in 0..CYCLES {
-                 // Use dynamic stride here
+                // Use dynamic stride here
                 defects_list.push(generate_defects(
                     rect_config.width,
                     rect_config.height,
@@ -280,11 +313,11 @@ fn run_suite<const STRIDE_Y: usize>(config: GridConfig, topo: TopologyArg) {
 
             // Tiled Growth - Square Topology on Rectangle
             run_tiled_growth_bench::<SquareGrid>(
-                "Tiled-Growth-Rectangle", 
-                rect_config, 
-                p, 
+                "Tiled-Growth-Rectangle",
+                rect_config,
+                p,
                 &defects_list,
-                widths
+                widths,
             );
         }
     }
@@ -310,7 +343,7 @@ mod tests {
         let defects = generate_defects(width, height, stride, 0.5, 123);
         // check size
         let alloc_size = stride * stride;
-        let num_blocks = (alloc_size + 63) / 64;
+        let num_blocks = alloc_size.div_ceil(64);
         assert_eq!(defects.len(), num_blocks);
     }
 }

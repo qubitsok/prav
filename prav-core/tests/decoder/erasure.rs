@@ -36,8 +36,7 @@ fn test_erasure_handling() {
     assert!(count > 0);
 
     // Verify that NO correction involves node 1.
-    for i in 0..count {
-        let c = corrections[i];
+    for c in corrections.iter().take(count) {
         assert_ne!(c.u, 1, "Correction involved erased node 1");
         assert_ne!(c.v, 1, "Correction involved erased node 1");
     }

@@ -15,11 +15,11 @@ static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
 pub unsafe fn init_heap() {
     use core::mem::MaybeUninit;
     use core::ptr::addr_of_mut;
-    
+
     // Allocate 256 KB for the heap in the BSS section.
-    const HEAP_SIZE: usize = 1024 * 256; 
+    const HEAP_SIZE: usize = 1024 * 256;
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-    
+
     HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE)
 }
 

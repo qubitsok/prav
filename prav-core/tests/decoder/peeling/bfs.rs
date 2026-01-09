@@ -35,9 +35,9 @@ fn test_trace_bitmask_bfs_simple_path() {
 
     // Should have found path u1 -> u0 (boundary)
     // Edge (32, 33) is dir 0 (horizontal).
-    // idx = 32 * 3 + 0 = 96.
-    // word = 96 / 64 = 1. bit = 96 % 64 = 32.
-    assert_ne!(decoder.edge_bitmap[1] & (1 << 32), 0);
+    // idx = 32 * 4 + 0 = 128 (power-of-4 encoding).
+    // word = 128 / 64 = 2. bit = 128 % 64 = 0.
+    assert_ne!(decoder.edge_bitmap[2] & (1 << 0), 0);
 
     // Should have cleared defect u1
     assert_eq!(decoder.defect_mask[blk1] & (1 << bit1), 0);
@@ -66,8 +66,8 @@ fn test_trace_bitmask_bfs_32x32_all_dirs() {
         decoder.mark_block_dirty(n as usize / 64);
     }
     decoder.trace_bitmask_bfs(u);
-    // Path includes edge 494-495: idx = 494 * 3 + 0 = 1482. word 23, bit 10.
-    assert_ne!(decoder.edge_bitmap[23] & (1 << 10), 0);
+    // Path includes edge 494-495: idx = 494 * 4 + 0 = 1976. word 30, bit 56.
+    assert_ne!(decoder.edge_bitmap[30] & (1 << 56), 0);
 
     // Test Right (+1)
     decoder.sparse_reset();
@@ -80,8 +80,8 @@ fn test_trace_bitmask_bfs_32x32_all_dirs() {
         decoder.mark_block_dirty(n as usize / 64);
     }
     decoder.trace_bitmask_bfs(u);
-    // Path includes edge 495-496: idx = 495 * 3 + 0 = 1485. word 23, bit 13.
-    assert_ne!(decoder.edge_bitmap[23] & (1 << 13), 0);
+    // Path includes edge 495-496: idx = 495 * 4 + 0 = 1980. word 30, bit 60.
+    assert_ne!(decoder.edge_bitmap[30] & (1 << 60), 0);
 
     // Test Up (-32)
     decoder.sparse_reset();
@@ -94,8 +94,8 @@ fn test_trace_bitmask_bfs_32x32_all_dirs() {
         decoder.mark_block_dirty(n as usize / 64);
     }
     decoder.trace_bitmask_bfs(u);
-    // Path includes edge 463-495: idx = 463 * 3 + 1 = 1389 + 1 = 1390. word 21, bit 46.
-    assert_ne!(decoder.edge_bitmap[21] & (1 << 46), 0);
+    // Path includes edge 463-495: idx = 463 * 4 + 1 = 1852 + 1 = 1853. word 28, bit 61.
+    assert_ne!(decoder.edge_bitmap[28] & (1 << 61), 0);
 
     // Test Down (+32)
     decoder.sparse_reset();
@@ -108,8 +108,8 @@ fn test_trace_bitmask_bfs_32x32_all_dirs() {
         decoder.mark_block_dirty(n as usize / 64);
     }
     decoder.trace_bitmask_bfs(u);
-    // Path includes edge 495-527: idx = 495 * 3 + 1 = 1485 + 1 = 1486. word 23, bit 14.
-    assert_ne!(decoder.edge_bitmap[23] & (1 << 14), 0);
+    // Path includes edge 495-527: idx = 495 * 4 + 1 = 1980 + 1 = 1981. word 30, bit 61.
+    assert_ne!(decoder.edge_bitmap[30] & (1 << 61), 0);
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn test_trace_bitmask_bfs_large_grid() {
 
     decoder.trace_bitmask_bfs(u1);
 
-    // Path 64-65: idx = 64 * 3 + 0 = 192. word 3, bit 0.
-    assert_ne!(decoder.edge_bitmap[3] & (1 << 0), 0);
+    // Path 64-65: idx = 64 * 4 + 0 = 256. word 4, bit 0.
+    assert_ne!(decoder.edge_bitmap[4] & (1 << 0), 0);
     assert_eq!(decoder.defect_mask[u1 as usize / 64] & (1 << (u1 % 64)), 0);
 }

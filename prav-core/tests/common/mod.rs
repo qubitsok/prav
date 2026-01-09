@@ -13,7 +13,10 @@ use prav_core::decoder::EdgeCorrection;
 /// if all defects are resolved.
 ///
 /// Returns `Ok(())` if all defects are matched, `Err` with remaining defect indices otherwise.
-pub fn verify_matching(dense_input: &[u64], corrections: &[EdgeCorrection]) -> Result<(), Vec<usize>> {
+pub fn verify_matching(
+    dense_input: &[u64],
+    corrections: &[EdgeCorrection],
+) -> Result<(), Vec<usize>> {
     let mut state = dense_input.to_vec();
 
     // Toggle correction endpoints

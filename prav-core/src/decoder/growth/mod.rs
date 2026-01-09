@@ -29,6 +29,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use crate::decoder::state::DecodingState;
+use crate::intrinsics::prefetch_l1;
 use crate::topology::Topology;
 
 // =============================================================================
@@ -178,8 +179,6 @@ impl<'a, T: Topology, const STRIDE_Y: usize> ClusterGrowth for DecodingState<'a,
 
         // Stage 1: Scanner (Burst-Mode Ingestion)
 
-
-
         while blk_idx < limit {
             let word = unsafe { *syndromes.get_unchecked(blk_idx) };
             if word != 0 {
@@ -323,7 +322,17 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
         let mut current_mask = self.active_block_mask;
         while current_mask != 0 {
             let blk_idx = crate::intrinsics::tzcnt(current_mask) as usize;
-            current_mask &= current_mask - 1;
+            let next_mask = current_mask & (current_mask - 1);
+
+            // Prefetch next block while processing current - hides memory latency
+            // (~10-40 cycles saved per block by overlapping computation with cache fetch)
+            if next_mask != 0 {
+                let next_blk = crate::intrinsics::tzcnt(next_mask) as usize;
+                let ptr = &self.blocks_state[next_blk] as *const _ as *const u8;
+                prefetch_l1(ptr);
+            }
+
+            current_mask = next_mask;
 
             unsafe {
                 self.process_block(blk_idx);

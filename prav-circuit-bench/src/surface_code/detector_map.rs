@@ -55,7 +55,7 @@ impl DetectorMapper {
     /// it to prav's stride-based layout.
     pub fn remap_syndrome(&self, dem_syndrome: &[u64], detectors: &[Detector]) -> Vec<u64> {
         let num_nodes = self.stride_z * self.depth;
-        let num_words = (num_nodes + 63) / 64;
+        let num_words = num_nodes.div_ceil(64);
         let mut prav_syndrome = vec![0u64; num_words];
 
         // Iterate over set bits in the DEM syndrome

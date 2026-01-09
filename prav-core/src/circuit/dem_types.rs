@@ -283,7 +283,7 @@ impl<'a> CompiledDem<'a> {
     /// Get number of 64-bit words needed for syndrome storage.
     #[must_use]
     pub const fn syndrome_words(&self) -> usize {
-        (self.num_detectors as usize + 63) / 64
+        (self.num_detectors as usize).div_ceil(64)
     }
 
     /// Check if the DEM has any hyperedges (errors affecting >2 detectors).
@@ -311,11 +311,7 @@ impl<'a> CompiledDem<'a> {
 /// For negative values, returns 0.
 #[inline]
 fn round_to_usize(x: f32) -> usize {
-    if x < 0.0 {
-        0
-    } else {
-        (x + 0.5) as usize
-    }
+    if x < 0.0 { 0 } else { (x + 0.5) as usize }
 }
 
 #[cfg(test)]
@@ -407,7 +403,10 @@ mod tests {
 
     #[test]
     fn test_compiled_dem() {
-        let detectors = [Detector::new(0, 0.0, 0.0, 0.0), Detector::new(1, 1.0, 0.0, 0.0)];
+        let detectors = [
+            Detector::new(0, 0.0, 0.0, 0.0),
+            Detector::new(1, 1.0, 0.0, 0.0),
+        ];
         let det_ids: &[u32] = &[0, 1];
         let mechanisms = [ErrorMechanism::new(0.001, det_ids, 0)];
 
@@ -468,7 +467,10 @@ mod kani_proofs {
         let words = dem.syndrome_words();
 
         // Should hold all detector bits
-        kani::assert(words * 64 >= num_detectors as usize, "words must hold all bits");
+        kani::assert(
+            words * 64 >= num_detectors as usize,
+            "words must hold all bits",
+        );
 
         // Should not overallocate by more than 63 bits
         if num_detectors > 0 {
@@ -487,7 +489,10 @@ mod kani_proofs {
 
         let det = ErrorTarget::Detector(det_id);
         kani::assert(det.is_detector(), "Detector target must be detector");
-        kani::assert(!det.is_observable(), "Detector target must not be observable");
+        kani::assert(
+            !det.is_observable(),
+            "Detector target must not be observable",
+        );
         kani::assert(det.detector_id() == Some(det_id), "detector_id must match");
         kani::assert(det.observable_id().is_none(), "observable_id must be None");
 
@@ -495,6 +500,9 @@ mod kani_proofs {
         kani::assert(!obs.is_detector(), "Observable target must not be detector");
         kani::assert(obs.is_observable(), "Observable target must be observable");
         kani::assert(obs.detector_id().is_none(), "detector_id must be None");
-        kani::assert(obs.observable_id() == Some(obs_id), "observable_id must match");
+        kani::assert(
+            obs.observable_id() == Some(obs_id),
+            "observable_id must match",
+        );
     }
 }

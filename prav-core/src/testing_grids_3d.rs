@@ -22,7 +22,6 @@
 //! assert_eq!(config.num_rounds, 5);
 //! ```
 
-
 /// Type of surface code layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceCodeType {
@@ -195,7 +194,14 @@ impl TestGrids3D {
 
     /// Returns all predefined rotated surface code configurations.
     pub const fn all_rotated() -> [Grid3DConfig; 6] {
-        [Self::D3, Self::D5, Self::D7, Self::D11, Self::D17, Self::D21]
+        [
+            Self::D3,
+            Self::D5,
+            Self::D7,
+            Self::D11,
+            Self::D17,
+            Self::D21,
+        ]
     }
 
     /// Returns default configurations for quick testing (D3, D5, D7).

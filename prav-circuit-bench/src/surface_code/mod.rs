@@ -7,5 +7,7 @@ mod rotated;
 mod unrotated;
 
 pub use detector_map::DetectorMapper;
+#[allow(unused_imports)]
 pub use rotated::RotatedSurfaceCode;
+#[allow(unused_imports)]
 pub use unrotated::UnrotatedSurfaceCode;

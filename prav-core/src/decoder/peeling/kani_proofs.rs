@@ -2,12 +2,12 @@
 //!
 //! These proofs verify critical safety invariants in the decoder's peeling operations.
 
-use crate::decoder::state::{DecodingState, BoundaryConfig};
+use crate::decoder::graph::StaticGraph;
+use crate::decoder::peeling::Peeling;
+use crate::decoder::state::{BoundaryConfig, DecodingState};
 use crate::decoder::types::EdgeCorrection;
 use crate::topology::SquareGrid;
-use crate::decoder::peeling::Peeling;
 use core::marker::PhantomData;
-use crate::decoder::graph::StaticGraph;
 
 // Mock constants for verification
 const WIDTH: usize = 4;
@@ -23,7 +23,7 @@ const EDGE_WORDS: usize = 1; // 48 edges fit in 1 u64
 fn verify_emit_linear_bounds() {
     // 1. Setup Mock State
     // We need backing storage for the slices
-    
+
     // Graph (Minimal)
     let graph = StaticGraph {
         width: WIDTH,
@@ -34,8 +34,8 @@ fn verify_emit_linear_bounds() {
         stride_z: STRIDE_Y * HEIGHT,
         blk_stride_y: 1, // simplified
         blk_stride_z: 0, // Not used for 2D
-        shift_y: 2, // log2(4)
-        shift_z: 4, // log2(16)
+        shift_y: 2,      // log2(4)
+        shift_z: 4,      // log2(16)
         row_end_mask: 0,
         row_start_mask: 0,
     };
@@ -48,15 +48,15 @@ fn verify_emit_linear_bounds() {
     let mut active_mask = [0u64; 1];
     let mut queued_mask = [0u64; 1];
     let mut ingestion_list = [0u32; NUM_BLOCKS];
-    
+
     let mut edge_bitmap = [0u64; EDGE_WORDS];
     let mut edge_dirty_list = [0u32; EDGE_WORDS * 8];
     let mut edge_dirty_mask = [0u64; EDGE_WORDS];
-    
+
     let mut boundary_bitmap = [0u64; NUM_BLOCKS];
     let mut boundary_dirty_list = [0u32; NUM_BLOCKS * 8];
     let mut boundary_dirty_mask = [0u64; NUM_BLOCKS];
-    
+
     let mut bfs_pred = [0u16; NUM_NODES];
     let mut bfs_queue = [0u16; NUM_NODES];
 
@@ -100,7 +100,7 @@ fn verify_emit_linear_bounds() {
 
     // Constrain inputs to be valid nodes
     kani::assume(u < NUM_NODES as u32);
-    
+
     // For v, it can be MAX (boundary) or a valid node
     if v != u32::MAX {
         kani::assume(v < NUM_NODES as u32);
@@ -120,20 +120,23 @@ fn verify_emit_linear_bounds() {
         let bit_idx = (u as usize) % 64;
         // Verify bit is flipped (it was 0 initially)
         // Wait, multiple calls might flip it back. Here we call once.
-        kani::assert(decoder.boundary_bitmap[blk_idx] & (1 << bit_idx) != 0, "Boundary bit set");
+        kani::assert(
+            decoder.boundary_bitmap[blk_idx] & (1 << bit_idx) != 0,
+            "Boundary bit set",
+        );
         kani::assert(decoder.boundary_dirty_count <= 1, "Boundary count updated");
     } else {
         // If it was a valid edge
         let (p1, p2) = if u < v { (u, v) } else { (v, u) };
         let diff = p2 - p1;
-        
+
         let valid_edge = diff == 1 || diff == STRIDE_Y as u32 || diff == (STRIDE_Y * HEIGHT) as u32;
-        
+
         if valid_edge {
-             // Check edge bitmap
-             // We can't easily predict WHICH bit without re-implementing logic, 
-             // but we can check dirty count increased
-             kani::assert(decoder.edge_dirty_count <= 1, "Edge dirty count updated");
+            // Check edge bitmap
+            // We can't easily predict WHICH bit without re-implementing logic,
+            // but we can check dirty count increased
+            kani::assert(decoder.edge_dirty_count <= 1, "Edge dirty count updated");
         }
     }
 }
@@ -165,15 +168,15 @@ fn verify_reconstruct_corrections_bounds() {
     let mut active_mask = [0u64; 1];
     let mut queued_mask = [0u64; 1];
     let mut ingestion_list = [0u32; NUM_BLOCKS];
-    
+
     let mut edge_bitmap = [0u64; EDGE_WORDS];
     let mut edge_dirty_list = [0u32; EDGE_WORDS * 8];
     let mut edge_dirty_mask = [0u64; EDGE_WORDS];
-    
+
     let mut boundary_bitmap = [0u64; NUM_BLOCKS];
     let mut boundary_dirty_list = [0u32; NUM_BLOCKS * 8];
     let mut boundary_dirty_mask = [0u64; NUM_BLOCKS];
-    
+
     let mut bfs_pred = [0u16; NUM_NODES];
     let mut bfs_queue = [0u16; NUM_NODES];
 
@@ -225,17 +228,20 @@ fn verify_reconstruct_corrections_bounds() {
     decoder.boundary_dirty_mask[0] = 1;
 
     let mut corrections = [EdgeCorrection::default(); 10];
-    
+
     // Call reconstruct
     let count = decoder.reconstruct_corrections(&mut corrections);
 
     // Verify
     kani::assert(count <= corrections.len(), "Count within bounds");
     kani::assert(decoder.edge_dirty_count == 0, "Edge dirty count cleared");
-    kani::assert(decoder.boundary_dirty_count == 0, "Boundary dirty count cleared");
+    kani::assert(
+        decoder.boundary_dirty_count == 0,
+        "Boundary dirty count cleared",
+    );
     kani::assert(decoder.edge_bitmap[0] == 0, "Edge bitmap cleared");
     kani::assert(decoder.boundary_bitmap[0] == 0, "Boundary bitmap cleared");
-    
+
     // Check masks cleared
     kani::assert(decoder.edge_dirty_mask[0] == 0, "Edge mask cleared");
     kani::assert(decoder.boundary_dirty_mask[0] == 0, "Boundary mask cleared");
@@ -294,7 +300,10 @@ fn verify_get_coord_bounds() {
 
     // Verify bounds
     kani::assert(x < stride_y, "X coordinate must be within stride_y");
-    kani::assert(y < stride_y, "Y coordinate must be within stride_y (for square grids)");
+    kani::assert(
+        y < stride_y,
+        "Y coordinate must be within stride_y (for square grids)",
+    );
     kani::assert(z < depth, "Z coordinate must be within depth");
 }
 
@@ -327,7 +336,10 @@ fn verify_try_queue_bit_safety() {
     // Verify bit operations are safe
     let next_bit = 1u64 << next;
     kani::assert(next_bit != 0, "Bit shift must produce non-zero result");
-    kani::assert(next_bit.count_ones() == 1, "Bit shift must produce single bit");
+    kani::assert(
+        next_bit.count_ones() == 1,
+        "Bit shift must produce single bit",
+    );
 
     // Simulate try_queue logic
     let should_enqueue = (mask & next_bit) != 0 && (visited & next_bit) == 0;
@@ -339,11 +351,11 @@ fn verify_try_queue_bit_safety() {
         // Verify invariants
         kani::assert(
             new_visited.count_ones() >= visited.count_ones(),
-            "Visited count must not decrease"
+            "Visited count must not decrease",
         );
         kani::assert(
             new_queue.count_ones() >= queue.count_ones(),
-            "Queue count must not decrease"
+            "Queue count must not decrease",
         );
 
         // pred[next] = curr as u8 would be safe since curr < 64 fits in u8
@@ -385,7 +397,10 @@ fn verify_bitmask_bfs_visited_bounds() {
     let n_bit = (node as usize) % 64;
 
     // Verify bounds
-    kani::assert(n_blk < visited_len, "Block index must be within visited array");
+    kani::assert(
+        n_blk < visited_len,
+        "Block index must be within visited array",
+    );
     kani::assert(n_bit < 64, "Bit index must be within word size");
 
     // Verify bit operation safety

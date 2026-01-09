@@ -2,6 +2,7 @@
 #[derive(Clone, Copy)]
 pub struct Measurement {
     /// Raw hardware ticks (if available/relevant).
+    #[allow(dead_code)] // Used by bare-metal platforms for cycle counting
     pub ticks: Option<u64>,
     /// Elapsed time in microseconds.
     pub micros: f64,

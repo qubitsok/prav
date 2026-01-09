@@ -3,8 +3,8 @@
 //! These tests verify mathematical invariants of grid configuration functions
 //! using randomized inputs.
 
+use prav_core::testing_grids::{GridConfig, isqrt};
 use proptest::prelude::*;
-use prav_core::testing_grids::{isqrt, GridConfig};
 
 proptest! {
     /// Verify isqrt maintains the integer square root invariant:

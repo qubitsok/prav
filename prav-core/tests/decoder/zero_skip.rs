@@ -14,7 +14,7 @@ fn test_zero_skip_loader_patterns() {
     let pow2 = max_dim.next_power_of_two();
     let stride_y = pow2;
     let total_nodes = stride_y * stride_y;
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
 
     // Test 1: Empty Input
     {

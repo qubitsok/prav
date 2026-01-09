@@ -1,12 +1,12 @@
-use alloc::vec::Vec;
 use alloc::format;
+use alloc::vec::Vec;
 use core::cmp::max;
 
 use prav_core::{
     arena::Arena,
     decoder::{EdgeCorrection, TiledDecodingState},
-    testing_grids::{TestGrids, GridConfig, ERROR_PROBS},
-    topology::{SquareGrid, TriangularGrid, HoneycombGrid, Topology},
+    testing_grids::{GridConfig, TestGrids, ERROR_PROBS},
+    topology::{HoneycombGrid, SquareGrid, Topology, TriangularGrid},
 };
 
 use rand_chacha::ChaCha8Rng;
@@ -129,7 +129,7 @@ fn run_benchmark<T: Topology>(
 
     let mut memory = alloc::vec![0u8; memory_size];
     let mut arena = Arena::new(&mut memory);
-    
+
     // Initialize the decoder state.
     let mut decoder = TiledDecodingState::<T>::new(&mut arena, config.width, config.height);
 
@@ -157,7 +157,7 @@ fn run_benchmark<T: Topology>(
         total_defects += defects_count;
 
         let t0 = Platform::now();
-        
+
         // 1. Reset: clear previous state (optimized for sparse graphs).
         decoder.sparse_reset();
         // 2. Load: inject the error syndromes into the graph.
@@ -166,7 +166,7 @@ fn run_benchmark<T: Topology>(
         decoder.grow_clusters();
         // 4. Peel: extract the matching edges (corrections) from the clusters.
         let count = decoder.peel_forest(&mut corrections);
-        
+
         let m = Platform::measure(t0);
         measurements.push(m);
 
@@ -218,7 +218,7 @@ fn run_benchmark<T: Topology>(
     let p_str = format!("{:.3}", p);
 
     let (w_shape, w_dims, w_nodes, w_p) = widths;
-    
+
     // Fixed widths for data columns
     let w_avg = 8;
     let w_p50 = 8;
@@ -240,13 +240,13 @@ pub fn run_suite(topo: TopologyArg, all_grids: bool) {
     // 1. Calculate formatting widths for the results table.
     let all_grids_data = TestGrids::all();
     let default_grids_data = TestGrids::defaults();
-    
+
     let grids: &[GridConfig] = if all_grids {
         &all_grids_data
     } else {
         &default_grids_data
     };
-    
+
     let mut w_shape = "Shape".len();
     let mut w_dims = "Dims".len();
     let mut w_nodes = "Nodes (Target)".len();
@@ -265,7 +265,10 @@ pub fn run_suite(topo: TopologyArg, all_grids: bool) {
             w_shape = max(w_shape, "Rectangle".len());
             let r = config.to_rectangular(3.0);
             w_dims = max(w_dims, format!("{}x{}", r.width, r.height).len());
-            w_nodes = max(w_nodes, format!("{} ({})", r.actual_nodes(), r.target_nodes).len());
+            w_nodes = max(
+                w_nodes,
+                format!("{} ({})", r.actual_nodes(), r.target_nodes).len(),
+            );
         }
         if matches!(topo, TopologyArg::Triangular | TopologyArg::All) {
             w_shape = max(w_shape, "Triangular".len());
@@ -275,7 +278,10 @@ pub fn run_suite(topo: TopologyArg, all_grids: bool) {
         }
 
         w_dims = max(w_dims, format!("{}x{}", config.width, config.height).len());
-        w_nodes = max(w_nodes, format!("{} ({})", config.actual_nodes(), config.target_nodes).len());
+        w_nodes = max(
+            w_nodes,
+            format!("{} ({})", config.actual_nodes(), config.target_nodes).len(),
+        );
     }
 
     for &p in &ERROR_PROBS {
@@ -291,8 +297,24 @@ pub fn run_suite(topo: TopologyArg, all_grids: bool) {
     // 2. Print Table Header
     let header = format!(
         "{:<w0$} | {:<w1$} | {:<w2$} | {:<w3$} | {:<w4$} | {:<w5$} | {:<w6$} | {:<w7$} | {:<w8$}",
-        "Shape", "Dims", "Nodes (Target)", "p", "Avg(us)", "p50", "p95", "p99", "Solve%",
-        w0=w_shape, w1=w_dims, w2=w_nodes, w3=w_p, w4=w_avg, w5=w_p50, w6=w_p95, w7=w_p99, w8=w_solve
+        "Shape",
+        "Dims",
+        "Nodes (Target)",
+        "p",
+        "Avg(us)",
+        "p50",
+        "p95",
+        "p99",
+        "Solve%",
+        w0 = w_shape,
+        w1 = w_dims,
+        w2 = w_nodes,
+        w3 = w_p,
+        w4 = w_avg,
+        w5 = w_p50,
+        w6 = w_p95,
+        w7 = w_p99,
+        w8 = w_solve
     );
     Platform::print(&header);
     Platform::print(&"-".repeat(header.len()));
@@ -331,7 +353,7 @@ pub fn run_suite(topo: TopologyArg, all_grids: bool) {
                     widths,
                 );
             }
-            
+
             if matches!(topo, TopologyArg::Rectangle | TopologyArg::All) {
                 let rect_config = config.to_rectangular(3.0);
                 let mut rect_defects = Vec::with_capacity(CYCLES);

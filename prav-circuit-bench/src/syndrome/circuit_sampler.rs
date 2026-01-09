@@ -1,8 +1,8 @@
 //! Circuit-level syndrome sampling from DEM.
 
 use rand::Rng;
-use rand_xoshiro::Xoshiro256PlusPlus;
 use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 
 use crate::dem::types::ParsedDem;
 
@@ -43,7 +43,7 @@ impl CircuitSampler {
     /// - syndrome_bits: packed u64 words with one bit per detector
     /// - frame_changes: bitmask of flipped logical observables
     pub fn sample(&mut self) -> (Vec<u64>, u8) {
-        let num_words = (self.num_detectors as usize + 63) / 64;
+        let num_words = (self.num_detectors as usize).div_ceil(64);
         let mut syndrome = vec![0u64; num_words];
         let mut logical_flips = 0u8;
 

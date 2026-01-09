@@ -662,7 +662,11 @@ mod tests {
             let (expanded, next_mask) = decoder.process_all_blocks_stride_64();
             assert!(expanded);
             assert!(next_mask != 0);
-            assert_eq!(decoder.find(0), boundary_node, "Corner node should connect to boundary");
+            assert_eq!(
+                decoder.find(0),
+                boundary_node,
+                "Corner node should connect to boundary"
+            );
         }
     }
 
@@ -688,7 +692,11 @@ mod tests {
             // Nodes at (10, 32) and (11, 32) should be connected
             let node_a = 32 * 64 + 10;
             let node_b = 32 * 64 + 11;
-            assert_eq!(decoder.find(node_a), decoder.find(node_b), "Adjacent nodes should merge");
+            assert_eq!(
+                decoder.find(node_a),
+                decoder.find(node_b),
+                "Adjacent nodes should merge"
+            );
         }
     }
 
@@ -712,7 +720,10 @@ mod tests {
 
             let (expanded, _next_mask) = decoder.process_all_blocks_stride_64();
             assert!(expanded);
-            assert_eq!(decoder.find((last_data_block * 64 + 63) as u32), boundary_node);
+            assert_eq!(
+                decoder.find((last_data_block * 64 + 63) as u32),
+                boundary_node
+            );
         }
     }
 
@@ -796,7 +807,7 @@ mod tests {
             assert!(expanded);
 
             // The two nodes should be connected
-            let node_a = 5 * 64 + 0;
+            let node_a = 5 * 64; // bit 0 within block 5
             let node_b = 5 * 64 + 32;
             assert_eq!(decoder.find(node_a as u32), decoder.find(node_b as u32));
         }

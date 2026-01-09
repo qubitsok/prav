@@ -95,7 +95,8 @@ fn has_syndrome(syndromes: &[u64], index: u32) -> bool {
 
 /// Prints the lattice structure with syndrome node positions.
 fn print_lattice() {
-    println!("
+    println!(
+        "
     The 4×4 Square Lattice
     ═══════════════════════
 
@@ -118,9 +119,10 @@ fn print_lattice() {
     Boundary nodes have 2-3 neighbors and can match to the boundary.
 
     Morton indices for this grid:
-");
+"
+    );
     for y in 0..HEIGHT {
-        print!    ("    y={}: ", y);
+        print!("    y={}: ", y);
         for x in 0..WIDTH {
             print!("{:3} ", idx(x, y));
         }
@@ -174,11 +176,13 @@ fn print_corrections(corrections: &[EdgeCorrection], count: usize) {
 // =============================================================================
 
 fn main() {
-    println!("
+    println!(
+        "
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║         QUANTUM ERROR CORRECTION TUTORIAL: Square Lattice                 ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
-");
+"
+    );
 
     // =========================================================================
     // STEP 1: Understand the Lattice
@@ -212,12 +216,15 @@ fn main() {
     let mut decoder: DecodingState<SquareGrid, STRIDE_Y> =
         DecodingState::new(&mut arena, WIDTH, HEIGHT, 1);
 
-    println!("    Created decoder for {}x{} grid with STRIDE_Y={}", WIDTH, HEIGHT, STRIDE_Y);
+    println!(
+        "    Created decoder for {}x{} grid with STRIDE_Y={}",
+        WIDTH, HEIGHT, STRIDE_Y
+    );
     println!("    Using SquareGrid topology (4-neighbor connectivity)");
     println!();
 
     // Calculate number of u64 blocks needed for syndrome storage
-    let num_blocks = (STRIDE_Y * STRIDE_Y + 63) / 64;
+    let num_blocks = (STRIDE_Y * STRIDE_Y).div_ceil(64);
     let mut syndromes = vec![0u64; num_blocks];
     let mut corrections = vec![EdgeCorrection::default(); WIDTH * HEIGHT * 2];
 
@@ -228,7 +235,8 @@ fn main() {
     println!("  SCENARIO 1: Single Data Qubit Error");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     Physical situation: A single data qubit on the edge between
     syndrome nodes (1,1) and (2,1) experiences a bit-flip error.
 
@@ -245,7 +253,8 @@ fn main() {
     y=3 ─── o ─── o ─── o ─── o ───
 
     * = syndrome triggered, X = data qubit error
-");
+"
+    );
 
     // Clear and set syndromes
     syndromes.fill(0);
@@ -280,7 +289,8 @@ fn main() {
     println!("  SCENARIO 2: Two Adjacent Errors (Chain)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     Physical situation: Two adjacent data qubits both have errors.
     The syndrome at the middle node cancels out (XOR of two 1s = 0).
 
@@ -295,7 +305,8 @@ fn main() {
 
     The node at (1,1) sees TWO adjacent errors, so its parity is 0+1+1=0 (even).
     Only the endpoints of the error chain have odd parity.
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(0, 1)); // Left end of chain
@@ -323,7 +334,8 @@ fn main() {
     println!("  SCENARIO 3: Boundary Matching");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     Physical situation: An error occurs on a data qubit at the edge
     of the lattice. One syndrome node detects it, but the other
     'syndrome' is effectively the boundary itself.
@@ -337,7 +349,8 @@ fn main() {
 
     The syndrome at (0,0) has odd parity, but there's no second syndrome
     inside the lattice. The decoder matches it to the boundary.
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(0, 0)); // Single syndrome near boundary
@@ -364,7 +377,8 @@ fn main() {
     println!("  SUMMARY: What We Learned");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     1. SYNDROME GENERATION
        - Each data qubit error activates exactly 2 adjacent syndrome nodes
        - Multiple errors on adjacent qubits can cancel syndromes (XOR property)
@@ -388,5 +402,6 @@ fn main() {
     a correction that, when XOR'd with the actual errors, gives the identity.
     This is why Union-Find is so powerful: it finds efficient pairings that
     neutralize all syndromes.
-");
+"
+    );
 }

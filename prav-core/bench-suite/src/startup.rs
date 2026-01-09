@@ -1,5 +1,3 @@
-
-
 #[cfg(all(target_os = "none", target_abi = "eabi"))]
 use core::arch::global_asm;
 

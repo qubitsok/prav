@@ -83,7 +83,8 @@ fn has_syndrome(syndromes: &[u64], index: u32) -> bool {
 // =============================================================================
 
 fn print_lattice() {
-    println!("
+    println!(
+        "
     The 4×4 Triangular Lattice
     ═══════════════════════════
 
@@ -112,12 +113,17 @@ fn print_lattice() {
     O = Odd parity (diagonal to down-left)
 
     Node parities (index.count_ones() % 2):
-");
+"
+    );
     for y in 0..HEIGHT {
         print!("    y={}: ", y);
         for x in 0..WIDTH {
             let i = idx(x, y);
-            print!("{:2}({}) ", i, if i.count_ones() % 2 == 0 { "E" } else { "O" });
+            print!(
+                "{:2}({}) ",
+                i,
+                if i.count_ones() % 2 == 0 { "E" } else { "O" }
+            );
         }
         println!();
     }
@@ -154,16 +160,26 @@ fn print_corrections(corrections: &[EdgeCorrection], count: usize) {
     for c in &corrections[..count] {
         let (ux, uy) = coords(c.u);
         if c.v == u32::MAX {
-            println!("      - Edge from ({},{}) [{}] to BOUNDARY",
-                     ux, uy, parity(c.u));
+            println!(
+                "      - Edge from ({},{}) [{}] to BOUNDARY",
+                ux,
+                uy,
+                parity(c.u)
+            );
         } else {
             let (vx, vy) = coords(c.v);
             // Determine if this is a diagonal edge
             let dx = (vx as i32 - ux as i32).abs();
             let dy = (vy as i32 - uy as i32).abs();
-            let edge_type = if dx == 1 && dy == 1 { "DIAGONAL" } else { "cardinal" };
-            println!("      - Edge between ({},{}) and ({},{}) [{}]",
-                     ux, uy, vx, vy, edge_type);
+            let edge_type = if dx == 1 && dy == 1 {
+                "DIAGONAL"
+            } else {
+                "cardinal"
+            };
+            println!(
+                "      - Edge between ({},{}) and ({},{}) [{}]",
+                ux, uy, vx, vy, edge_type
+            );
         }
     }
     println!();
@@ -172,8 +188,13 @@ fn print_corrections(corrections: &[EdgeCorrection], count: usize) {
 fn print_neighbors(x: usize, y: usize) {
     let i = idx(x, y);
     let p = i.count_ones() % 2 == 0;
-    println!("    Neighbors of ({},{}) [index={}, parity={}]:",
-             x, y, i, if p { "even" } else { "odd" });
+    println!(
+        "    Neighbors of ({},{}) [index={}, parity={}]:",
+        x,
+        y,
+        i,
+        if p { "even" } else { "odd" }
+    );
 
     // Cardinal neighbors
     if x > 0 {
@@ -193,12 +214,20 @@ fn print_neighbors(x: usize, y: usize) {
     if p {
         // Even parity: up-right diagonal
         if x < WIDTH - 1 && y > 0 {
-            println!("      - UP-RIGHT: ({},{}) [DIAGONAL - even parity]", x + 1, y - 1);
+            println!(
+                "      - UP-RIGHT: ({},{}) [DIAGONAL - even parity]",
+                x + 1,
+                y - 1
+            );
         }
     } else {
         // Odd parity: down-left diagonal
         if x > 0 && y < HEIGHT - 1 {
-            println!("      - DOWN-LEFT: ({},{}) [DIAGONAL - odd parity]", x - 1, y + 1);
+            println!(
+                "      - DOWN-LEFT: ({},{}) [DIAGONAL - odd parity]",
+                x - 1,
+                y + 1
+            );
         }
     }
     println!();
@@ -209,11 +238,13 @@ fn print_neighbors(x: usize, y: usize) {
 // =============================================================================
 
 fn main() {
-    println!("
+    println!(
+        "
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║       QUANTUM ERROR CORRECTION TUTORIAL: Triangular Lattice               ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
-");
+"
+    );
 
     // =========================================================================
     // STEP 1: Understand the Triangular Lattice
@@ -253,7 +284,7 @@ fn main() {
     println!("    Using TriangularGrid topology (6-neighbor connectivity)");
     println!();
 
-    let num_blocks = (STRIDE_Y * STRIDE_Y + 63) / 64;
+    let num_blocks = (STRIDE_Y * STRIDE_Y).div_ceil(64);
     let mut syndromes = vec![0u64; num_blocks];
     let mut corrections = vec![EdgeCorrection::default(); WIDTH * HEIGHT * 3];
 
@@ -264,7 +295,8 @@ fn main() {
     println!("  SCENARIO 1: Cardinal Error (Same as Square Grid)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     An error between two horizontally adjacent nodes.
     This uses cardinal connectivity (shared with square grid).
 
@@ -274,7 +306,8 @@ fn main() {
     y=1 ─── O ─── * ═X═ * ─── E ───  ← Error between (1,1) and (2,1)
 
     y=2 ─── E ─── O ─── E ─── O ───
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(1, 1)); // Odd parity
@@ -300,7 +333,8 @@ fn main() {
     println!("  SCENARIO 2: Diagonal Error (Even Parity → Up-Right)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     An error on the diagonal edge from an EVEN parity node.
     Even nodes connect diagonally to UP-RIGHT.
 
@@ -311,7 +345,8 @@ fn main() {
     y=1 ─── O ─── * ─── O ─── E ───  ← Syndrome at (1,1), connects diagonally UP-RIGHT
 
     Node (1,1) has index 5, popcount=2, EVEN parity → diagonal to (2,0)
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(1, 1)); // Even parity node (index 5 = 0b101)
@@ -321,10 +356,18 @@ fn main() {
 
     // Verify parity
     println!("    Parity check:");
-    println!("      - Node (1,1): index={}, popcount={}, parity={}",
-             idx(1, 1), idx(1, 1).count_ones(), parity(idx(1, 1)));
-    println!("      - Node (2,0): index={}, popcount={}, parity={}",
-             idx(2, 0), idx(2, 0).count_ones(), parity(idx(2, 0)));
+    println!(
+        "      - Node (1,1): index={}, popcount={}, parity={}",
+        idx(1, 1),
+        idx(1, 1).count_ones(),
+        parity(idx(1, 1))
+    );
+    println!(
+        "      - Node (2,0): index={}, popcount={}, parity={}",
+        idx(2, 0),
+        idx(2, 0).count_ones(),
+        parity(idx(2, 0))
+    );
     println!();
 
     decoder.sparse_reset();
@@ -341,7 +384,8 @@ fn main() {
     println!("  SCENARIO 3: Diagonal Error (Odd Parity → Down-Left)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     An error on the diagonal edge from an ODD parity node.
     Odd nodes connect diagonally to DOWN-LEFT.
 
@@ -352,7 +396,8 @@ fn main() {
     y=1 ─── * ═════════ O ─── E ───  ← Syndrome at (0,1), connects from (1,0) DOWN-LEFT
             ╲
     Node (1,0) has index 1, popcount=1, ODD parity → diagonal to (0,1)
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(1, 0)); // Odd parity (index 1 = 0b001)
@@ -361,10 +406,18 @@ fn main() {
     print_syndromes_grid(&syndromes);
 
     println!("    Parity check:");
-    println!("      - Node (1,0): index={}, popcount={}, parity={}",
-             idx(1, 0), idx(1, 0).count_ones(), parity(idx(1, 0)));
-    println!("      - Node (0,1): index={}, popcount={}, parity={}",
-             idx(0, 1), idx(0, 1).count_ones(), parity(idx(0, 1)));
+    println!(
+        "      - Node (1,0): index={}, popcount={}, parity={}",
+        idx(1, 0),
+        idx(1, 0).count_ones(),
+        parity(idx(1, 0))
+    );
+    println!(
+        "      - Node (0,1): index={}, popcount={}, parity={}",
+        idx(0, 1),
+        idx(0, 1).count_ones(),
+        parity(idx(0, 1))
+    );
     println!();
 
     decoder.sparse_reset();
@@ -381,7 +434,8 @@ fn main() {
     println!("  SCENARIO 4: Mixed Cardinal and Diagonal Errors");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     A more complex error pattern spanning both cardinal and diagonal edges.
     The triangular connectivity provides more paths between syndromes.
 
@@ -396,7 +450,8 @@ fn main() {
     Both syndromes are at x=1. They share:
     - A cardinal edge (vertical)
     - Possibly diagonal connections depending on parity
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(1, 0));
@@ -418,7 +473,8 @@ fn main() {
     println!("  SUMMARY: Triangular Lattice Key Points");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     1. CONNECTIVITY
        - 4 cardinal neighbors (like square grid)
        - 2 additional diagonal neighbors (parity-dependent)
@@ -442,5 +498,6 @@ fn main() {
     The triangular lattice provides richer connectivity than the square grid,
     enabling quantum codes with different properties and potentially better
     error thresholds for certain noise models.
-");
+"
+    );
 }

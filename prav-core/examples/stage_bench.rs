@@ -1,8 +1,10 @@
 use clap::{Parser, ValueEnum};
 use prav_core::{
-    arena::Arena, decoder::TiledDecodingState, decoder::EdgeCorrection,
-    testing_grids::{GridConfig, TestGrids, ERROR_PROBS},
-    topology::{SquareGrid, TriangularGrid, HoneycombGrid, Topology},
+    arena::Arena,
+    decoder::EdgeCorrection,
+    decoder::TiledDecodingState,
+    testing_grids::{ERROR_PROBS, GridConfig, TestGrids},
+    topology::{HoneycombGrid, SquareGrid, Topology, TriangularGrid},
 };
 use rand::prelude::*;
 use rand::rngs::StdRng;
@@ -36,7 +38,7 @@ fn run_benchmark<T: Topology>(config: GridConfig, error_prob: f64, topo_name: &s
 
     let stride_y = config.stride_y;
     let total_nodes = stride_y * stride_y; // stride_y is next power of two of max dim
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
 
     let mut memory = vec![0u8; 1024 * 1024 * 512];
     let mut arena = Arena::new(&mut memory);
@@ -49,8 +51,13 @@ fn run_benchmark<T: Topology>(config: GridConfig, error_prob: f64, topo_name: &s
     let mut rng = StdRng::seed_from_u64(seed);
     println!(
         "--- [{} - Grid {}x{} (~{} nodes, Stride {})] Target Nodes: {}, Error Probability: {} ---",
-        topo_name, config.width, config.height, config.target_nodes, config.stride_y,
-        config.target_nodes, error_prob
+        topo_name,
+        config.width,
+        config.height,
+        config.target_nodes,
+        config.stride_y,
+        config.target_nodes,
+        error_prob
     );
     // Pre-generate defects to avoid benching RNG
     let mut scenarios = Vec::with_capacity(100);
@@ -101,7 +108,7 @@ fn run_benchmark<T: Topology>(config: GridConfig, error_prob: f64, topo_name: &s
         // Trace Phase
         /*
         // TiledDecodingState has different internals, so manual tracing is commented out
-        */
+         */
         _count = decoder.peel_forest(&mut corrections);
         t_trace += t3.elapsed();
 
@@ -136,11 +143,11 @@ fn run_benchmark<T: Topology>(config: GridConfig, error_prob: f64, topo_name: &s
 
     let bar = format!(
         "{}{}{}{}{}",
-        "█".repeat(w_grow),   // Grow - Heavy work
-        "▓".repeat(w_trace),  // Trace
-        "▒".repeat(w_load),   // Load
-        "░".repeat(w_reset),  // Reset
-        ":".repeat(w_compact) // Compact
+        "█".repeat(w_grow),    // Grow - Heavy work
+        "▓".repeat(w_trace),   // Trace
+        "▒".repeat(w_load),    // Load
+        "░".repeat(w_reset),   // Reset
+        ":".repeat(w_compact)  // Compact
     );
 
     println!(
@@ -164,12 +171,12 @@ fn run_suite<const STRIDE_Y: usize>(config: GridConfig, topo: TopologyArg) {
         if matches!(topo, TopologyArg::Square | TopologyArg::All) {
             run_benchmark::<SquareGrid>(config, error_prob, "Square");
         }
-        
+
         if matches!(topo, TopologyArg::Rectangle | TopologyArg::All) {
             let rect_config = config.to_rectangular(3.0);
             run_benchmark::<SquareGrid>(rect_config, error_prob, "Rectangle");
         }
-        
+
         if matches!(topo, TopologyArg::Triangular | TopologyArg::All) {
             run_benchmark::<TriangularGrid>(config, error_prob, "Triangular");
         }

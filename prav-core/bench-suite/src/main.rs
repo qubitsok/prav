@@ -22,9 +22,9 @@ mod platforms;
 mod startup; // Assembly startup code for bare metal
 
 #[cfg(not(target_os = "none"))]
-use alloc::format;
-#[cfg(not(target_os = "none"))]
 use alloc::borrow::ToOwned;
+#[cfg(not(target_os = "none"))]
+use alloc::format;
 #[cfg(not(target_os = "none"))]
 use std::string::String;
 
@@ -84,14 +84,16 @@ fn main() -> ! {
     }
 
     // 2. Initialize Heap
-    unsafe { platforms::bare_metal::init_heap(); }
+    unsafe {
+        platforms::bare_metal::init_heap();
+    }
 
     Platform::print("[Performance Test] 32x32 Grid (Stride 32)");
     Platform::print(Platform::platform_name());
-    
+
     // Topology selection via CLI is not supported on bare metal; default to Square.
     run_suite(TopologyArg::Square, false);
-    
+
     Platform::print("Bare Metal Done");
 
     loop {}
@@ -141,11 +143,13 @@ fn main() -> ! {
     }
 
     // 2. Initialize Heap
-    unsafe { platforms::bare_metal::init_heap(); }
+    unsafe {
+        platforms::bare_metal::init_heap();
+    }
 
     Platform::print("Bare Metal Start");
     Platform::print(Platform::platform_name());
-    
+
     run_suite(TopologyArg::Square, false);
 
     // 3. Exit via Semihosting (SYS_EXIT)

@@ -1,7 +1,7 @@
 fn compute_stripe_ranges(total_blocks: usize, num_threads: usize) -> Vec<(usize, usize)> {
     let align = 8;
-    let blocks_per_thread = (total_blocks + num_threads - 1) / num_threads;
-    let aligned_per_thread = ((blocks_per_thread + align - 1) / align) * align;
+    let blocks_per_thread = total_blocks.div_ceil(num_threads);
+    let aligned_per_thread = blocks_per_thread.div_ceil(align) * align;
 
     let mut ranges = Vec::new();
     let mut current = 0;

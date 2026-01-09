@@ -5,8 +5,8 @@
 
 use fusion_blossom::util::VertexIndex;
 use rand::Rng;
-use rand_xoshiro::Xoshiro256PlusPlus;
 use rand::SeedableRng;
+use rand_xoshiro::Xoshiro256PlusPlus;
 
 /// Generate random syndromes in prav format (bitpacked u64 arrays).
 ///
@@ -26,7 +26,7 @@ pub fn generate_prav_syndromes(
 
     // Calculate number of u64 blocks needed
     let alloc_size = height * stride;
-    let num_blocks = (alloc_size + 63) / 64;
+    let num_blocks = alloc_size.div_ceil(64);
 
     let mut syndromes = Vec::with_capacity(num_shots);
 
@@ -53,11 +53,7 @@ pub fn generate_prav_syndromes(
 /// Convert prav-format syndromes to fusion-blossom sparse format.
 ///
 /// Returns a list of defect vertex indices in row-major order.
-pub fn prav_to_fusion_blossom(
-    packed: &[u64],
-    width: usize,
-    height: usize,
-) -> Vec<VertexIndex> {
+pub fn prav_to_fusion_blossom(packed: &[u64], width: usize, height: usize) -> Vec<VertexIndex> {
     let stride = width.max(height).next_power_of_two();
     let mut defects = Vec::new();
 

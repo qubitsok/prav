@@ -1,5 +1,6 @@
 mod batch_verification;
 mod boundary_diagnostics;
+mod component_api;
 mod edge_compaction;
 mod effective_mask;
 mod erasure;
@@ -8,14 +9,14 @@ mod flood_fill;
 mod ghost_activation;
 mod granular_api;
 mod internal;
-mod monochromatic;
+mod intra_block_dilation;
 mod mono_poly_split;
+mod monochromatic;
 mod optimistic_root;
 mod optimization;
 mod prefetch_bounds;
 mod prop_hot_state;
 mod prop_test;
-mod component_api;
 mod repro_issue;
 mod scenarios;
 mod scheduler_optimization;
@@ -26,15 +27,14 @@ mod trace_optimization;
 mod vertical_diffusion_log;
 mod vertical_merge;
 mod zero_skip;
-mod intra_block_dilation;
 
 mod graph;
 mod growth;
 mod peeling;
 
 // New coverage tests for decoder top-level files
-mod types_tests;
-mod union_find_tests;
+mod prop_decoder_core;
 mod state_tests;
 mod tiled_tests;
-mod prop_decoder_core;
+mod types_tests;
+mod union_find_tests;

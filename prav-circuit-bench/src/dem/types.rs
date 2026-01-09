@@ -31,7 +31,7 @@ impl ParsedDem {
 
     /// Get number of 64-bit words needed for syndrome storage.
     pub fn syndrome_words(&self) -> usize {
-        (self.num_detectors as usize + 63) / 64
+        (self.num_detectors as usize).div_ceil(64)
     }
 }
 

@@ -76,7 +76,8 @@ fn has_syndrome(syndromes: &[u64], index: u32) -> bool {
 // =============================================================================
 
 fn print_lattice() {
-    println!("
+    println!(
+        "
     The 5×3 Rectangular Lattice
     ═══════════════════════════
 
@@ -99,7 +100,8 @@ fn print_lattice() {
     but left/right boundaries are only 3 nodes tall.
 
     Morton indices:
-");
+"
+    );
     for y in 0..HEIGHT {
         print!("    y={}: ", y);
         for x in 0..WIDTH {
@@ -153,11 +155,13 @@ fn print_corrections(corrections: &[EdgeCorrection], count: usize) {
 // =============================================================================
 
 fn main() {
-    println!("
+    println!(
+        "
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║       QUANTUM ERROR CORRECTION TUTORIAL: Rectangular Lattice              ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
-");
+"
+    );
 
     // =========================================================================
     // STEP 1: Understand the Rectangular Lattice
@@ -190,11 +194,14 @@ fn main() {
         DecodingState::new(&mut arena, WIDTH, HEIGHT, 1);
 
     println!("    Created decoder for {}x{} grid", WIDTH, HEIGHT);
-    println!("    STRIDE_Y = {} (next_power_of_two of max dimension)", STRIDE_Y);
+    println!(
+        "    STRIDE_Y = {} (next_power_of_two of max dimension)",
+        STRIDE_Y
+    );
     println!("    Same SquareGrid topology - only dimensions change!");
     println!();
 
-    let num_blocks = (STRIDE_Y * STRIDE_Y + 63) / 64;
+    let num_blocks = (STRIDE_Y * STRIDE_Y).div_ceil(64);
     let mut syndromes = vec![0u64; num_blocks];
     let mut corrections = vec![EdgeCorrection::default(); WIDTH * HEIGHT * 2];
 
@@ -205,7 +212,8 @@ fn main() {
     println!("  SCENARIO 1: Error Near Short Boundary (Top Edge)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     A single syndrome near the top boundary (y=0).
     Distance to top boundary: 0 edges (adjacent)
     Distance to bottom boundary: 2 edges (far)
@@ -220,7 +228,8 @@ fn main() {
     ═══════════════════════════════════════  ← Bottom boundary
 
     The syndrome will match to the NEAREST boundary - the top edge.
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(0, 0));
@@ -245,7 +254,8 @@ fn main() {
     println!("  SCENARIO 2: Error Near Long Boundary (Left Edge)");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     A single syndrome on the left boundary (x=0), middle row.
     This syndrome is equidistant from top and bottom boundaries,
     so it matches to the left boundary.
@@ -260,7 +270,8 @@ fn main() {
             │     │     │     │     │
 
     The syndrome matches to the left boundary.
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(0, 1));
@@ -281,7 +292,8 @@ fn main() {
     println!("  SCENARIO 3: Two Syndromes at Opposite Corners");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     Two syndromes at opposite corners of the rectangle.
     Which is the shortest path: through the lattice, or via boundaries?
 
@@ -296,7 +308,8 @@ fn main() {
 
     Path through lattice: 4 + 2 = 6 edges (Manhattan distance)
     Path (0,0)→boundary + boundary→(4,2): could be shorter!
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(0, 0)); // Top-left
@@ -322,7 +335,8 @@ fn main() {
     println!("  SCENARIO 4: Error Chain Across the Long Axis");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     Two syndromes on a horizontal line (along the long axis).
     The 5-node width allows for longer error chains.
 
@@ -337,7 +351,8 @@ fn main() {
 
     Distance between syndromes: 4 edges (the full width minus 1)
     Could match through lattice, or each to nearest boundary.
-");
+"
+    );
 
     syndromes.fill(0);
     set_syndrome(&mut syndromes, idx(0, 1)); // Left
@@ -364,7 +379,8 @@ fn main() {
     println!("  SUMMARY: Rectangular vs Square Codes");
     println!("═══════════════════════════════════════════════════════════════════════════");
 
-    println!("
+    println!(
+        "
     Key differences in rectangular codes:
 
     1. ASYMMETRIC BOUNDARY DISTANCES
@@ -389,5 +405,6 @@ fn main() {
 
     Rectangular codes offer flexibility in trading off X vs Z error protection,
     which is valuable when physical error rates are asymmetric.
-");
+"
+    );
 }

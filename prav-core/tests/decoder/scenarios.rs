@@ -19,7 +19,7 @@ fn run_test_scenario<const STRIDE_Y: usize>(w: usize, h: usize, defects: &[u32],
     let stride_y = pow2;
     let total_nodes = stride_y * stride_y;
 
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
     let mut dense_defects = vec![0u64; num_blocks];
 
     for &d in defects {
@@ -129,7 +129,6 @@ fn test_decoder_extreme_aspect_ratio_strip() {
     run_test_scenario::<64>(w, h, &[d1, d2], "Extreme Aspect Ratio Strip");
 }
 
-
 // This test verifies the end-to-end correctness of the refactored decoder.
 // It creates a specific syndrome pattern and checks if the decoder produces
 // the correct set of edge corrections. This validates both the implicit
@@ -159,7 +158,7 @@ fn test_refactored_decoder_correctness() {
     let defect_1_idx = defect_1_y * stride_y + defect_1_x;
     let defect_2_idx = defect_2_y * stride_y + defect_2_x;
 
-    let mut syndromes = vec![0u64; (width * height * 4 + 63) / 64]; // Allocation size approx
+    let mut syndromes = vec![0u64; (width * height * 4).div_ceil(64)]; // Allocation size approx
     // Note: decoder allocates based on pow2. 8*8 = 64 nodes.
     // syndromes length must match decoder's boundary length check.
     // Decoder uses (stride_y * height + 63)/64? No, dim_pow2 * dim_pow2.

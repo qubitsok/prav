@@ -23,7 +23,7 @@ mod kani_proofs;
 // =============================================================================
 
 // Bit operations
-pub use bits::{blsr, prefetch_l1, tzcnt, FastDiv};
+pub use bits::{FastDiv, blsr, prefetch_l1, tzcnt};
 
 // Morton encoding (commonly needed for defect generation)
 pub use morton::{

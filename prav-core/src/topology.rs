@@ -168,48 +168,72 @@ const fn generate_3d_neighbors() -> [u64; 64] {
         // -X neighbor (x > 0)
         if x > 0 {
             let nx = x - 1;
-            let neighbor_idx =
-                (nx & 1) | ((y & 1) << 1) | ((z & 1) << 2) | ((nx & 2) << 2) | ((y & 2) << 3) | ((z & 2) << 4);
+            let neighbor_idx = (nx & 1)
+                | ((y & 1) << 1)
+                | ((z & 1) << 2)
+                | ((nx & 2) << 2)
+                | ((y & 2) << 3)
+                | ((z & 2) << 4);
             mask |= 1u64 << neighbor_idx;
         }
 
         // +X neighbor (x < 3)
         if x < 3 {
             let nx = x + 1;
-            let neighbor_idx =
-                (nx & 1) | ((y & 1) << 1) | ((z & 1) << 2) | ((nx & 2) << 2) | ((y & 2) << 3) | ((z & 2) << 4);
+            let neighbor_idx = (nx & 1)
+                | ((y & 1) << 1)
+                | ((z & 1) << 2)
+                | ((nx & 2) << 2)
+                | ((y & 2) << 3)
+                | ((z & 2) << 4);
             mask |= 1u64 << neighbor_idx;
         }
 
         // -Y neighbor (y > 0)
         if y > 0 {
             let ny = y - 1;
-            let neighbor_idx =
-                (x & 1) | ((ny & 1) << 1) | ((z & 1) << 2) | ((x & 2) << 2) | ((ny & 2) << 3) | ((z & 2) << 4);
+            let neighbor_idx = (x & 1)
+                | ((ny & 1) << 1)
+                | ((z & 1) << 2)
+                | ((x & 2) << 2)
+                | ((ny & 2) << 3)
+                | ((z & 2) << 4);
             mask |= 1u64 << neighbor_idx;
         }
 
         // +Y neighbor (y < 3)
         if y < 3 {
             let ny = y + 1;
-            let neighbor_idx =
-                (x & 1) | ((ny & 1) << 1) | ((z & 1) << 2) | ((x & 2) << 2) | ((ny & 2) << 3) | ((z & 2) << 4);
+            let neighbor_idx = (x & 1)
+                | ((ny & 1) << 1)
+                | ((z & 1) << 2)
+                | ((x & 2) << 2)
+                | ((ny & 2) << 3)
+                | ((z & 2) << 4);
             mask |= 1u64 << neighbor_idx;
         }
 
         // -Z neighbor (z > 0)
         if z > 0 {
             let nz = z - 1;
-            let neighbor_idx =
-                (x & 1) | ((y & 1) << 1) | ((nz & 1) << 2) | ((x & 2) << 2) | ((y & 2) << 3) | ((nz & 2) << 4);
+            let neighbor_idx = (x & 1)
+                | ((y & 1) << 1)
+                | ((nz & 1) << 2)
+                | ((x & 2) << 2)
+                | ((y & 2) << 3)
+                | ((nz & 2) << 4);
             mask |= 1u64 << neighbor_idx;
         }
 
         // +Z neighbor (z < 3)
         if z < 3 {
             let nz = z + 1;
-            let neighbor_idx =
-                (x & 1) | ((y & 1) << 1) | ((nz & 1) << 2) | ((x & 2) << 2) | ((y & 2) << 3) | ((nz & 2) << 4);
+            let neighbor_idx = (x & 1)
+                | ((y & 1) << 1)
+                | ((nz & 1) << 2)
+                | ((x & 2) << 2)
+                | ((y & 2) << 3)
+                | ((nz & 2) << 4);
             mask |= 1u64 << neighbor_idx;
         }
 
@@ -258,7 +282,7 @@ const fn generate_3d_boundary_mask(axis: usize, is_end: bool) -> u64 {
     let mut i = 0usize;
     while i < 64 {
         let coord = match axis {
-            0 => (i & 1) | ((i >> 2) & 2),       // X
+            0 => (i & 1) | ((i >> 2) & 2),        // X
             1 => ((i >> 1) & 1) | ((i >> 3) & 2), // Y
             _ => ((i >> 2) & 1) | ((i >> 4) & 2), // Z
         };
@@ -654,20 +678,38 @@ mod tests {
                 for z in 1..=2 {
                     let idx = xyz_to_morton(x, y, z);
                     let count = INTRA_BLOCK_NEIGHBORS_3D[idx].count_ones();
-                    assert_eq!(count, 6, "Interior node ({},{},{}) idx={} should have 6 neighbors, got {}", x, y, z, idx, count);
+                    assert_eq!(
+                        count, 6,
+                        "Interior node ({},{},{}) idx={} should have 6 neighbors, got {}",
+                        x, y, z, idx, count
+                    );
                 }
             }
         }
 
         // Corner nodes should have 3 neighbors
-        for corner in [(0, 0, 0), (3, 0, 0), (0, 3, 0), (0, 0, 3), (3, 3, 0), (3, 0, 3), (0, 3, 3), (3, 3, 3)] {
+        for corner in [
+            (0, 0, 0),
+            (3, 0, 0),
+            (0, 3, 0),
+            (0, 0, 3),
+            (3, 3, 0),
+            (3, 0, 3),
+            (0, 3, 3),
+            (3, 3, 3),
+        ] {
             let idx = xyz_to_morton(corner.0, corner.1, corner.2);
             let count = INTRA_BLOCK_NEIGHBORS_3D[idx].count_ones();
-            assert_eq!(count, 3, "Corner ({},{},{}) idx={} should have 3 neighbors, got {}", corner.0, corner.1, corner.2, idx, count);
+            assert_eq!(
+                count, 3,
+                "Corner ({},{},{}) idx={} should have 3 neighbors, got {}",
+                corner.0, corner.1, corner.2, idx, count
+            );
         }
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)] // indices used for bit shifts, not just array access
     fn test_3d_neighbors_symmetry() {
         // If j is a neighbor of i, then i must be a neighbor of j
         for i in 0..64 {
@@ -677,7 +719,10 @@ mod tests {
                     assert!(
                         (INTRA_BLOCK_NEIGHBORS_3D[j] >> i) & 1 == 1,
                         "Symmetry violated: {} -> {} but not {} -> {}",
-                        i, j, j, i
+                        i,
+                        j,
+                        j,
+                        i
                     );
                 }
             }
@@ -685,6 +730,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)] // indices used for bit shifts and morton conversion
     fn test_3d_neighbors_are_adjacent() {
         // Each neighbor should differ by exactly 1 in exactly one coordinate
         for i in 0..64 {
@@ -697,9 +743,17 @@ mod tests {
                     let dy = (y1 as i32 - y2 as i32).abs();
                     let dz = (z1 as i32 - z2 as i32).abs();
                     assert_eq!(
-                        dx + dy + dz, 1,
+                        dx + dy + dz,
+                        1,
                         "Nodes {} ({},{},{}) and {} ({},{},{}) are not adjacent",
-                        i, x1, y1, z1, j, x2, y2, z2
+                        i,
+                        x1,
+                        y1,
+                        z1,
+                        j,
+                        x2,
+                        y2,
+                        z2
                     );
                 }
             }
@@ -713,7 +767,13 @@ mod tests {
             let (x, _, _) = morton_to_xyz(i);
             let in_start = (X_START_MASK_3D >> i) & 1 == 1;
             let in_end = (X_END_MASK_3D >> i) & 1 == 1;
-            assert_eq!(in_start, x == 0, "X_START_MASK_3D wrong for i={} x={}", i, x);
+            assert_eq!(
+                in_start,
+                x == 0,
+                "X_START_MASK_3D wrong for i={} x={}",
+                i,
+                x
+            );
             assert_eq!(in_end, x == 3, "X_END_MASK_3D wrong for i={} x={}", i, x);
         }
 
@@ -722,7 +782,13 @@ mod tests {
             let (_, y, _) = morton_to_xyz(i);
             let in_start = (Y_START_MASK_3D >> i) & 1 == 1;
             let in_end = (Y_END_MASK_3D >> i) & 1 == 1;
-            assert_eq!(in_start, y == 0, "Y_START_MASK_3D wrong for i={} y={}", i, y);
+            assert_eq!(
+                in_start,
+                y == 0,
+                "Y_START_MASK_3D wrong for i={} y={}",
+                i,
+                y
+            );
             assert_eq!(in_end, y == 3, "Y_END_MASK_3D wrong for i={} y={}", i, y);
         }
 
@@ -731,7 +797,13 @@ mod tests {
             let (_, _, z) = morton_to_xyz(i);
             let in_start = (Z_START_MASK_3D >> i) & 1 == 1;
             let in_end = (Z_END_MASK_3D >> i) & 1 == 1;
-            assert_eq!(in_start, z == 0, "Z_START_MASK_3D wrong for i={} z={}", i, z);
+            assert_eq!(
+                in_start,
+                z == 0,
+                "Z_START_MASK_3D wrong for i={} z={}",
+                i,
+                z
+            );
             assert_eq!(in_end, z == 3, "Z_END_MASK_3D wrong for i={} z={}", i, z);
         }
     }

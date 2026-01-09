@@ -5,7 +5,7 @@
 // Low-level bit operations optimized for the target architecture.
 
 #[cfg(all(target_arch = "x86_64", target_feature = "sse"))]
-use core::arch::x86_64::{_mm_prefetch, _MM_HINT_T0};
+use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
 
 /// Prefetch data into L1 cache.
 ///

@@ -190,36 +190,116 @@ pub fn spread_syndrome_masked(
 // - Y neighbors: ±2 (y0 flip) or ±14 (y0→y1 transition)
 // - Z neighbors: ±4 (z0 flip) or ±28 (z0→z1 transition)
 //
-// We use the neighbor lookup table for accurate 6-connected spreading.
+// We provide both a lookup-table version and a SWAR (SIMD Within A Register)
+// version that uses parallel bit operations for better performance.
 
-/// Spread syndrome bits within a 4×4×4 Morton-encoded 3D block.
+// Bit position masks for 3D Morton coordinates in 64-bit blocks.
+// Morton encoding: idx = z1 y1 x1 z0 y0 x0 (bits 5..0)
+// X coordinate uses bits 0 and 3
+// Y coordinate uses bits 1 and 4
+// Z coordinate uses bits 2 and 5
+
+/// Positions where x0=1 (odd bit positions in Morton layout).
+const X0_SET: u64 = 0xAAAA_AAAA_AAAA_AAAA;
+/// Positions where x0=0 (even bit positions in Morton layout).
+const X0_CLR: u64 = 0x5555_5555_5555_5555;
+/// Positions where x1=1 (positions 8-15, 24-31, 40-47, 56-63 in groups of 8).
+const X1_SET: u64 = 0xFF00_FF00_FF00_FF00;
+/// Positions where x1=0 (positions 0-7, 16-23, 32-39, 48-55 in groups of 8).
+const X1_CLR: u64 = 0x00FF_00FF_00FF_00FF;
+
+/// Positions where y0=1 (positions where bit 1 is set).
+const Y0_SET: u64 = 0xCCCC_CCCC_CCCC_CCCC;
+/// Positions where y0=0 (positions where bit 1 is clear).
+const Y0_CLR: u64 = 0x3333_3333_3333_3333;
+/// Positions where y1=1 (positions 16-31, 48-63 in groups of 16).
+const Y1_SET: u64 = 0xFFFF_0000_FFFF_0000;
+/// Positions where y1=0 (positions 0-15, 32-47 in groups of 16).
+const Y1_CLR: u64 = 0x0000_FFFF_0000_FFFF;
+
+/// Positions where z0=1 (positions where bit 2 is set).
+const Z0_SET: u64 = 0xF0F0_F0F0_F0F0_F0F0;
+/// Positions where z0=0 (positions where bit 2 is clear).
+const Z0_CLR: u64 = 0x0F0F_0F0F_0F0F_0F0F;
+/// Positions where z1=1 (positions 32-63).
+const Z1_SET: u64 = 0xFFFF_FFFF_0000_0000;
+/// Positions where z1=0 (positions 0-31).
+const Z1_CLR: u64 = 0x0000_0000_FFFF_FFFF;
+
+/// Spread syndrome bits within a 4×4×4 Morton-encoded 3D block using SWAR.
 ///
-/// Uses the precomputed `INTRA_BLOCK_NEIGHBORS_3D` lookup table for
-/// accurate 6-connected spreading. Iterates until convergence or
-/// maximum diameter (9 steps for 4×4×4, Manhattan distance 3+3+3).
+/// Uses parallel bit operations to spread in all 6 directions simultaneously,
+/// instead of iterating bit-by-bit. This provides O(diameter) complexity
+/// instead of O(diameter × popcount).
 ///
-/// # Arguments
+/// # Morton Encoding
 ///
-/// * `boundary` - Current boundary bits (defects to spread from)
-/// * `occupied` - Valid positions in the block
+/// The 64 positions are Morton-encoded: `idx = z1 y1 x1 z0 y0 x0` (bits 5..0)
+///
+/// # Neighbor Shift Distances
+///
+/// Due to Morton encoding, neighbor distances depend on coordinate position:
+/// - **X axis**: ±1 (within same x-half) or ±7 (cross x-half boundary)
+/// - **Y axis**: ±2 (within same y-half) or ±14 (cross y-half boundary)
+/// - **Z axis**: ±4 (within same z-half) or ±28 (cross z-half boundary)
 ///
 /// # Performance
 ///
-/// O(diameter × popcount) where diameter ≤ 9 for 4×4×4 block.
-/// Early termination when no new positions are reached.
+/// O(9) iterations maximum (Manhattan distance corner-to-corner = 3+3+3).
+/// Each iteration performs ~12 bit operations instead of O(popcount) lookups.
 #[inline(always)]
 pub fn spread_syndrome_3d(mut boundary: u64, occupied: u64) -> u64 {
-    use crate::topology::INTRA_BLOCK_NEIGHBORS_3D;
-
     // Maximum 9 iterations for corner-to-corner spreading in 4×4×4
     // (Manhattan distance from (0,0,0) to (3,3,3) = 3+3+3 = 9)
+    for _ in 0..9 {
+        // +X neighbors: x∈{0,2}→{1,3} via <<1, x=1→2 via <<7
+        // x0=0 can shift +1 to reach x0=1 neighbor
+        // x=1 (x0=1, x1=0) can shift +7 to reach x=2 (x0=0, x1=1)
+        let x_plus = ((boundary & X0_CLR) << 1) | ((boundary & X0_SET & X1_CLR) << 7);
+
+        // -X neighbors: x∈{1,3}→{0,2} via >>1, x=2→1 via >>7
+        // x0=1 can shift -1 to reach x0=0 neighbor
+        // x=2 (x0=0, x1=1) can shift -7 to reach x=1 (x0=1, x1=0)
+        let x_minus = ((boundary & X0_SET) >> 1) | ((boundary & X0_CLR & X1_SET) >> 7);
+
+        // +Y neighbors: y∈{0,2}→{1,3} via <<2, y=1→2 via <<14
+        let y_plus = ((boundary & Y0_CLR) << 2) | ((boundary & Y0_SET & Y1_CLR) << 14);
+
+        // -Y neighbors: y∈{1,3}→{0,2} via >>2, y=2→1 via >>14
+        let y_minus = ((boundary & Y0_SET) >> 2) | ((boundary & Y0_CLR & Y1_SET) >> 14);
+
+        // +Z neighbors: z∈{0,2}→{1,3} via <<4, z=1→2 via <<28
+        let z_plus = ((boundary & Z0_CLR) << 4) | ((boundary & Z0_SET & Z1_CLR) << 28);
+
+        // -Z neighbors: z∈{1,3}→{0,2} via >>4, z=2→1 via >>28
+        let z_minus = ((boundary & Z0_SET) >> 4) | ((boundary & Z0_CLR & Z1_SET) >> 28);
+
+        let next = (boundary | x_plus | x_minus | y_plus | y_minus | z_plus | z_minus) & occupied;
+
+        if next == boundary {
+            return boundary;
+        }
+        boundary = next;
+    }
+    boundary
+}
+
+/// Original lookup-table based 3D spreading (for verification/fallback).
+///
+/// Uses the precomputed `INTRA_BLOCK_NEIGHBORS_3D` lookup table.
+/// O(diameter × popcount) complexity.
+#[inline(always)]
+#[allow(dead_code)]
+pub fn spread_syndrome_3d_lookup(mut boundary: u64, occupied: u64) -> u64 {
+    use crate::topology::INTRA_BLOCK_NEIGHBORS_3D;
+
     for _ in 0..9 {
         let mut next = boundary;
         let mut bits = boundary;
         while bits != 0 {
             let i = bits.trailing_zeros() as usize;
             next |= INTRA_BLOCK_NEIGHBORS_3D[i];
-            bits &= bits - 1; // Clear lowest set bit
+            bits &= bits - 1;
         }
         next &= occupied;
         if next == boundary {
@@ -244,6 +324,7 @@ pub fn spread_syndrome_3d(mut boundary: u64, occupied: u64) -> u64 {
 /// * `y_end`, `y_start` - Y boundary masks (currently unused, for API compat)
 /// * `z_end`, `z_start` - Z boundary masks (currently unused, for API compat)
 #[inline(always)]
+#[allow(clippy::too_many_arguments)]
 pub fn spread_syndrome_3d_masked(
     boundary: u64,
     occupied: u64,
@@ -301,7 +382,7 @@ mod tests {
         let neighbor = xyz_to_morton(2, 2, 3);
         let boundary = 1u64 << center;
         // Block neighbor so spreading can't reach beyond
-        let occupied = u64::MAX & !(1u64 << neighbor);
+        let occupied = !(1u64 << neighbor);
 
         let spread = spread_syndrome_3d(boundary, occupied);
 
@@ -384,5 +465,102 @@ mod tests {
 
         let spread = spread_syndrome_3d(boundary, occupied);
         assert_eq!(spread.count_ones(), 64);
+    }
+
+    #[test]
+    fn test_swar_matches_lookup_all_starts() {
+        // Verify SWAR implementation matches lookup table for all 64 starting positions
+        for start in 0..64 {
+            let boundary = 1u64 << start;
+            let occupied = u64::MAX;
+
+            let swar = spread_syndrome_3d(boundary, occupied);
+            let lookup = spread_syndrome_3d_lookup(boundary, occupied);
+
+            assert_eq!(
+                swar, lookup,
+                "SWAR vs lookup mismatch at start={}: SWAR={:#018x}, lookup={:#018x}",
+                start, swar, lookup
+            );
+        }
+    }
+
+    #[test]
+    fn test_swar_matches_lookup_random_patterns() {
+        // Test with various boundary and occupied patterns
+        let test_cases: [(u64, u64); 10] = [
+            (0x1, u64::MAX),                   // Single bit at 0
+            (0x8000_0000_0000_0000, u64::MAX), // Single bit at 63
+            (0x0000_0001_0000_0001, u64::MAX), // Two corners
+            (0xFFFF_FFFF_FFFF_FFFF, u64::MAX), // All bits
+            (0x1, 0x0F0F_0F0F_0F0F_0F0F),      // Restricted occupied
+            (0x8000_0000_0000_0000, 0xF0F0_F0F0_F0F0_F0F0),
+            (0x0101_0101_0101_0101, u64::MAX), // Scattered seeds
+            (0x00FF, 0x00FF_00FF_00FF_00FF),   // Checkerboard pattern
+            (0x1248, u64::MAX),                // Arbitrary pattern
+            (0xDEAD_BEEF_CAFE_BABE, u64::MAX), // Random pattern
+        ];
+
+        for (boundary, occupied) in test_cases {
+            let swar = spread_syndrome_3d(boundary, occupied);
+            let lookup = spread_syndrome_3d_lookup(boundary, occupied);
+
+            assert_eq!(
+                swar, lookup,
+                "SWAR vs lookup mismatch: boundary={:#018x}, occupied={:#018x}\n  SWAR={:#018x}\n  lookup={:#018x}",
+                boundary, occupied, swar, lookup
+            );
+        }
+    }
+
+    #[test]
+    fn test_swar_single_step_neighbors() {
+        // Test that a single position spreads to exactly its 6 neighbors after one "step"
+        // We can verify this by checking with occupied = only the start position and neighbors
+
+        // Interior position (1,1,1) should have 6 neighbors
+        let center = xyz_to_morton(1, 1, 1);
+        let center_bit = 1u64 << center;
+
+        // Get expected neighbors from lookup table
+        use crate::topology::INTRA_BLOCK_NEIGHBORS_3D;
+        let expected_neighbors = INTRA_BLOCK_NEIGHBORS_3D[center];
+
+        // Run SWAR with occupied = center + all neighbors (simulates 1 step)
+        let occupied = center_bit | expected_neighbors;
+        let spread = spread_syndrome_3d(center_bit, occupied);
+
+        // Should spread to all neighbors
+        assert_eq!(
+            spread, occupied,
+            "Center (1,1,1) should spread to all 6 neighbors"
+        );
+        assert_eq!(spread.count_ones(), 7, "Center + 6 neighbors = 7 positions");
+    }
+
+    #[test]
+    fn test_morton_masks_correctness() {
+        // Verify the constant masks are correct
+        for i in 0..64 {
+            let x0 = (i & 1) != 0;
+            let x1 = (i & 8) != 0;
+            let y0 = (i & 2) != 0;
+            let y1 = (i & 16) != 0;
+            let z0 = (i & 4) != 0;
+            let z1 = (i & 32) != 0;
+
+            assert_eq!((X0_SET >> i) & 1 == 1, x0, "X0_SET wrong at {}", i);
+            assert_eq!((X0_CLR >> i) & 1 == 1, !x0, "X0_CLR wrong at {}", i);
+            assert_eq!((X1_SET >> i) & 1 == 1, x1, "X1_SET wrong at {}", i);
+            assert_eq!((X1_CLR >> i) & 1 == 1, !x1, "X1_CLR wrong at {}", i);
+            assert_eq!((Y0_SET >> i) & 1 == 1, y0, "Y0_SET wrong at {}", i);
+            assert_eq!((Y0_CLR >> i) & 1 == 1, !y0, "Y0_CLR wrong at {}", i);
+            assert_eq!((Y1_SET >> i) & 1 == 1, y1, "Y1_SET wrong at {}", i);
+            assert_eq!((Y1_CLR >> i) & 1 == 1, !y1, "Y1_CLR wrong at {}", i);
+            assert_eq!((Z0_SET >> i) & 1 == 1, z0, "Z0_SET wrong at {}", i);
+            assert_eq!((Z0_CLR >> i) & 1 == 1, !z0, "Z0_CLR wrong at {}", i);
+            assert_eq!((Z1_SET >> i) & 1 == 1, z1, "Z1_SET wrong at {}", i);
+            assert_eq!((Z1_CLR >> i) & 1 == 1, !z1, "Z1_CLR wrong at {}", i);
+        }
     }
 }

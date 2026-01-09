@@ -260,15 +260,19 @@ impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, ST
                 word &= word - 1;
 
                 let global_idx = base_idx + bit;
-                let u = (global_idx / 3) as u32;
-                let dir = global_idx % 3;
+                // Fast decode: shift by 2 instead of expensive div by 3
+                let u = (global_idx >> 2) as u32;
+                let dir = global_idx & 3;
 
-                let v = match dir {
-                    0 => u + 1,
-                    1 => u + self.stride_y as u32,
-                    2 => u + self.graph.stride_z as u32,
-                    _ => unsafe { core::hint::unreachable_unchecked() },
-                };
+                // dir=3 slots are unused padding (only X=0, Y=1, Z=2 directions exist)
+                // Skip if somehow set (should never happen in normal operation)
+                if dir == 3 {
+                    continue;
+                }
+
+                // Branchless lookup: edge_strides[dir] = [1, stride_y, stride_z, 0]
+                // Avoids branch misprediction from match statement (~15-20 cycle penalty)
+                let v = u + unsafe { *self.edge_strides.get_unchecked(dir) };
 
                 if count < corrections.len() {
                     unsafe {
@@ -532,9 +536,10 @@ impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, ST
             return;
         };
 
-        let idx = (u as usize) * 3 + dir;
-        let word_idx = idx / 64;
-        let bit_idx = idx % 64;
+        // Use * 4 (power of 2) for fast shift/mask decode in reconstruct_corrections
+        let idx = (u as usize) * 4 + dir;
+        let word_idx = idx >> 6;
+        let bit_idx = idx & 63;
 
         let mask_idx = word_idx >> 6;
         let mask_bit = word_idx & 63;
@@ -643,9 +648,10 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
                 return;
             };
 
-            let idx = (u as usize) * 3 + dir;
-            let word_idx = idx / 64;
-            let bit_idx = idx % 64;
+            // Use * 4 (power of 2) for fast shift/mask decode in reconstruct_corrections
+            let idx = (u as usize) * 4 + dir;
+            let word_idx = idx >> 6;
+            let bit_idx = idx & 63;
 
             let word_ptr = unsafe { edge_bitmap.get_unchecked_mut(word_idx) };
             if *word_ptr == 0 {
@@ -867,7 +873,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
         // Clear all defects in this component from defect_mask to prevent re-processing
         #[allow(clippy::needless_range_loop)]
         for i in 0..visited_len {
-            if visited[i] != 0 && let Some(dm) = self.defect_mask.get_mut(i) {
+            if visited[i] != 0
+                && let Some(dm) = self.defect_mask.get_mut(i)
+            {
                 *dm &= !visited[i];
             }
         }
@@ -890,10 +898,5 @@ fn try_queue(
     }
 }
 
-
-
 #[cfg(kani)]
-
 mod kani_proofs;
-
-

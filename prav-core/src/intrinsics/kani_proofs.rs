@@ -158,11 +158,7 @@ fn verify_spread_8x8_containment() {
     let mut b = boundary;
 
     for _ in 0..8 {
-        let next = b
-            | ((b << 1) & mask_e)
-            | ((b >> 1) & mask_w)
-            | (b << 8)
-            | (b >> 8);
+        let next = b | ((b << 1) & mask_e) | ((b >> 1) & mask_w) | (b << 8) | (b >> 8);
         let next = next & occupied;
         if next == b {
             break;
@@ -170,7 +166,10 @@ fn verify_spread_8x8_containment() {
         b = next;
     }
 
-    kani::assert((b & !occupied) == 0, "spread result must be subset of occupied");
+    kani::assert(
+        (b & !occupied) == 0,
+        "spread result must be subset of occupied",
+    );
 }
 
 // ============================================================================
@@ -232,10 +231,7 @@ fn verify_bit_iteration_terminates() {
     }
 
     // All originally set bits should have been processed
-    kani::assert(
-        processed == original,
-        "all bits must be processed",
-    );
+    kani::assert(processed == original, "all bits must be processed");
 }
 
 // ============================================================================
@@ -261,11 +257,7 @@ fn verify_spread_preserves_boundary() {
     let mut b = start;
 
     for _ in 0..8 {
-        let next = b
-            | ((b << 1) & mask_e)
-            | ((b >> 1) & mask_w)
-            | (b << 8)
-            | (b >> 8);
+        let next = b | ((b << 1) & mask_e) | ((b >> 1) & mask_w) | (b << 8) | (b >> 8);
         let next = next & occupied;
         if next == b {
             break;

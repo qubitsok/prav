@@ -16,6 +16,9 @@
 //! cargo run --release -p prav-circuit-bench -- --distances 3,5,7
 //! ```
 
+// Work-in-progress: infrastructure for future benchmarking features
+#![allow(dead_code, unused_imports)]
+
 mod dem;
 mod stats;
 mod surface_code;
@@ -28,15 +31,13 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 
 use prav_core::{
-    Arena, DecoderBuilder, DynDecoder, EdgeCorrection, Grid3D,
-    Grid3DConfig, TestGrids3D, CIRCUIT_ERROR_PROBS, required_buffer_size,
+    Arena, CIRCUIT_ERROR_PROBS, DecoderBuilder, DynDecoder, EdgeCorrection, Grid3D, Grid3DConfig,
+    TestGrids3D, required_buffer_size,
 };
 
-use crate::stats::{
-    calculate_percentiles, SuppressionFactor, ThresholdPoint, CSV_HEADER,
-};
-use crate::syndrome::{generate_correlated_syndromes, CircuitSampler, SyndromeWithLogical};
+use crate::stats::{CSV_HEADER, SuppressionFactor, ThresholdPoint, calculate_percentiles};
 use crate::surface_code::DetectorMapper;
+use crate::syndrome::{CircuitSampler, SyndromeWithLogical, generate_correlated_syndromes};
 use crate::verification::verify_with_logical;
 
 #[derive(Parser, Debug)]
@@ -103,7 +104,11 @@ struct BenchmarkResults {
     logical_errors: usize,
 }
 
-fn warmup_decoder(decoder: &mut DynDecoder<Grid3D>, samples: &[SyndromeWithLogical], max_corrections: usize) {
+fn warmup_decoder(
+    decoder: &mut DynDecoder<Grid3D>,
+    samples: &[SyndromeWithLogical],
+    max_corrections: usize,
+) {
     let mut corrections = vec![EdgeCorrection::default(); max_corrections];
     for sample in samples.iter().take(200) {
         decoder.load_dense_syndromes(&sample.syndrome);
@@ -142,7 +147,11 @@ fn benchmark_3d_circuit(
 
     for sample in samples {
         // Count defects
-        total_defects += sample.syndrome.iter().map(|w| w.count_ones() as usize).sum::<usize>();
+        total_defects += sample
+            .syndrome
+            .iter()
+            .map(|w| w.count_ones() as usize)
+            .sum::<usize>();
 
         // Time decoding
         let t0 = Instant::now();
@@ -241,10 +250,9 @@ fn main() {
             // Generate syndromes with logical tracking
             let samples: Vec<SyndromeWithLogical> = if let Some(ref dem_path) = args.dem {
                 // Load from DEM file
-                let dem_content = std::fs::read_to_string(dem_path)
-                    .expect("Failed to read DEM file");
-                let parsed = dem::parser::parse_dem(&dem_content)
-                    .expect("Failed to parse DEM");
+                let dem_content =
+                    std::fs::read_to_string(dem_path).expect("Failed to read DEM file");
+                let parsed = dem::parser::parse_dem(&dem_content).expect("Failed to parse DEM");
                 let mapper = DetectorMapper::new(&config);
                 let mut sampler = CircuitSampler::new(&parsed, args.seed);
                 sampler
@@ -316,7 +324,10 @@ fn print_lambda_table(points: &[ThresholdPoint], distances: &[usize], error_prob
     // Build header
     let mut header = format!("{:>8}", "p");
     for i in 0..distances.len().saturating_sub(1) {
-        header.push_str(&format!(" {:>12}", format!("Λ({}→{})", distances[i], distances[i + 1])));
+        header.push_str(&format!(
+            " {:>12}",
+            format!("Λ({}→{})", distances[i], distances[i + 1])
+        ));
     }
     println!("{}", header);
     println!("{}", "-".repeat(header.len()));
@@ -330,12 +341,19 @@ fn print_lambda_table(points: &[ThresholdPoint], distances: &[usize], error_prob
             let d_high = distances[i + 1];
 
             // Find points for these distances at this error rate
-            let point_low = points.iter().find(|pt| pt.distance == d_low && (pt.physical_error_rate - p).abs() < 1e-9);
-            let point_high = points.iter().find(|pt| pt.distance == d_high && (pt.physical_error_rate - p).abs() < 1e-9);
+            let point_low = points
+                .iter()
+                .find(|pt| pt.distance == d_low && (pt.physical_error_rate - p).abs() < 1e-9);
+            let point_high = points
+                .iter()
+                .find(|pt| pt.distance == d_high && (pt.physical_error_rate - p).abs() < 1e-9);
 
             if let (Some(low), Some(high)) = (point_low, point_high) {
                 if let Some(lambda) = SuppressionFactor::from_points(low, high) {
-                    row.push_str(&format!(" {:>5.2}±{:<5.2}", lambda.lambda, lambda.lambda_err));
+                    row.push_str(&format!(
+                        " {:>5.2}±{:<5.2}",
+                        lambda.lambda, lambda.lambda_err
+                    ));
                 } else {
                     row.push_str(&format!(" {:>12}", "N/A"));
                 }

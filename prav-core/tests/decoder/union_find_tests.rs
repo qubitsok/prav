@@ -73,7 +73,10 @@ fn test_find_slow_path_two_levels() {
 
     // After path halving, 0 should point to 2 (grandparent)
     // Path halving: parent[0] = grandparent = 2
-    assert_eq!(decoder.parents[0], 2, "Path halving should point 0 to grandparent 2");
+    assert_eq!(
+        decoder.parents[0], 2,
+        "Path halving should point 0 to grandparent 2"
+    );
 }
 
 #[test]
@@ -115,29 +118,20 @@ fn test_find_slow_path_marks_dirty() {
 
     // Block 0 should be marked dirty due to path compression
     let dirty_bit = decoder.block_dirty_mask[0] & 1;
-    assert_ne!(dirty_bit, 0, "Block 0 should be marked dirty after path compression");
+    assert_ne!(
+        dirty_bit, 0,
+        "Block 0 should be marked dirty after path compression"
+    );
 }
 
 #[test]
 fn test_find_slow_path_cross_block_chain() {
-    let mut memory = vec![0u8; 1024 * 1024];
-    let mut arena = Arena::new(&mut memory);
-    let mut decoder = create_decoder::<8>(&mut arena, 8, 8);
-
-    // Clear dirty masks
-    decoder.block_dirty_mask.fill(0);
-
     // Create chain crossing blocks: 0 -> 65 -> 130 (root)
     // Node 0 is in block 0, node 65 is in block 1, node 130 is in block 2
-    // But we need to ensure these are valid indices
-    // For 8x8 grid with stride 8, valid nodes are within the grid
-    // Let's use a larger grid
-    drop(decoder);
-    drop(arena);
-
-    let mut memory2 = vec![0u8; 4 * 1024 * 1024];
-    let mut arena2 = Arena::new(&mut memory2);
-    let mut decoder2 = create_decoder::<16>(&mut arena2, 16, 16);
+    // We need a larger grid (16x16) to ensure these are valid indices
+    let mut memory = vec![0u8; 4 * 1024 * 1024];
+    let mut arena = Arena::new(&mut memory);
+    let mut decoder2 = create_decoder::<16>(&mut arena, 16, 16);
 
     // Clear dirty masks
     decoder2.block_dirty_mask.fill(0);
@@ -171,8 +165,14 @@ fn test_union_roots_smaller_joins_larger() {
 
     assert!(result, "union_roots should return true for different roots");
     // Smaller root (3) should join larger (7)
-    assert_eq!(decoder.parents[3], 7, "Smaller root 3 should point to larger root 7");
-    assert_eq!(decoder.parents[7], 7, "Larger root 7 should remain self-rooted");
+    assert_eq!(
+        decoder.parents[3], 7,
+        "Smaller root 3 should point to larger root 7"
+    );
+    assert_eq!(
+        decoder.parents[7], 7,
+        "Larger root 7 should remain self-rooted"
+    );
 }
 
 #[test]
@@ -186,8 +186,14 @@ fn test_union_roots_larger_joins_smaller_parameter_order() {
 
     assert!(result, "union_roots should return true for different roots");
     // Smaller root (5) should join larger (10)
-    assert_eq!(decoder.parents[5], 10, "Smaller root 5 should point to larger root 10");
-    assert_eq!(decoder.parents[10], 10, "Larger root 10 should remain self-rooted");
+    assert_eq!(
+        decoder.parents[5], 10,
+        "Smaller root 5 should point to larger root 10"
+    );
+    assert_eq!(
+        decoder.parents[10], 10,
+        "Larger root 10 should remain self-rooted"
+    );
 }
 
 #[test]
@@ -216,7 +222,8 @@ fn test_union_roots_invalidates_block_cache() {
 
     // The smaller root's block should have its cache invalidated
     assert_eq!(
-        decoder.blocks_state[0].root, u32::MAX,
+        decoder.blocks_state[0].root,
+        u32::MAX,
         "Block cache should be invalidated after union"
     );
 }
@@ -234,7 +241,10 @@ fn test_union_roots_marks_dirty() {
 
     // Block 0 should be marked dirty
     let block0_dirty = (decoder.block_dirty_mask[0] & 1) != 0;
-    assert!(block0_dirty, "Block should be marked dirty after union_roots");
+    assert!(
+        block0_dirty,
+        "Block should be marked dirty after union_roots"
+    );
 }
 
 // =============================================================================
@@ -268,7 +278,10 @@ fn test_union_same_cluster() {
 
     // Second union of same nodes should return false
     let result = unsafe { decoder.union(3, 7) };
-    assert!(!result, "union of already-connected nodes should return false");
+    assert!(
+        !result,
+        "union of already-connected nodes should return false"
+    );
 }
 
 #[test]
@@ -306,7 +319,10 @@ fn test_union_chain_compression() {
     let expected_root = decoder.find(0);
     for i in 1..=5 {
         let root = decoder.find(i);
-        assert_eq!(root, expected_root, "All nodes should have same root after chain union");
+        assert_eq!(
+            root, expected_root,
+            "All nodes should have same root after chain union"
+        );
     }
 }
 
@@ -405,12 +421,20 @@ fn test_block_dirty_tracking_sparse() {
     decoder.block_dirty_mask.fill(0);
 
     // Union only a few nodes (sparse case)
-    let _ = unsafe { decoder.union(0, 1) };   // Block 0
+    let _ = unsafe { decoder.union(0, 1) }; // Block 0
     let _ = unsafe { decoder.union(128, 129) }; // Block 2
 
     // Count dirty blocks
-    let dirty_count: u32 = decoder.block_dirty_mask.iter().map(|w| w.count_ones()).sum();
+    let dirty_count: u32 = decoder
+        .block_dirty_mask
+        .iter()
+        .map(|w| w.count_ones())
+        .sum();
 
     // Should have exactly 2 dirty blocks (block 0 and block 2)
-    assert!(dirty_count <= 4, "Only touched blocks should be dirty, got {} dirty blocks", dirty_count);
+    assert!(
+        dirty_count <= 4,
+        "Only touched blocks should be dirty, got {} dirty blocks",
+        dirty_count
+    );
 }

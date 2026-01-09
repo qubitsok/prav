@@ -36,7 +36,7 @@ impl GridConfig {
     /// and the given aspect ratio (width / height).
     pub fn to_rectangular(&self, aspect_ratio: f64) -> Self {
         let nodes = self.target_nodes;
-        
+
         // h^2 = N / ratio
         let val = (nodes as f64 / aspect_ratio) as usize;
         let h = isqrt(val).max(1);
@@ -153,12 +153,7 @@ impl TestGrids {
 
     /// Returns an array of default grid configurations (up to LARGE).
     pub const fn defaults() -> [GridConfig; 4] {
-        [
-            Self::TINY,
-            Self::SMALL,
-            Self::MEDIUM,
-            Self::LARGE,
-        ]
+        [Self::TINY, Self::SMALL, Self::MEDIUM, Self::LARGE]
     }
 }
 
@@ -202,12 +197,18 @@ mod tests {
 
         // Wide rectangle (2:1 aspect ratio)
         let rect = config.to_rectangular(2.0);
-        assert!(rect.width > rect.height, "width should be greater for ratio > 1");
+        assert!(
+            rect.width > rect.height,
+            "width should be greater for ratio > 1"
+        );
         assert!(rect.stride_y.is_power_of_two());
 
         // Tall rectangle (0.5:1 aspect ratio)
         let rect_tall = config.to_rectangular(0.5);
-        assert!(rect_tall.height > rect_tall.width, "height should be greater for ratio < 1");
+        assert!(
+            rect_tall.height > rect_tall.width,
+            "height should be greater for ratio < 1"
+        );
         assert!(rect_tall.stride_y.is_power_of_two());
 
         // Square (1:1 aspect ratio)
@@ -363,10 +364,7 @@ mod kani_proofs {
 
         let config = GridConfig::from_target_nodes(target);
 
-        kani::assert(
-            config.stride_y >= config.width,
-            "stride_y must be >= width",
-        );
+        kani::assert(config.stride_y >= config.width, "stride_y must be >= width");
         kani::assert(
             config.stride_y >= config.height,
             "stride_y must be >= height",

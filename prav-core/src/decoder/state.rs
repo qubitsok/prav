@@ -60,6 +60,9 @@ pub struct DecodingState<'a, T: Topology, const STRIDE_Y: usize> {
     pub height: usize,
     /// Y stride for coordinate calculations (power of 2 for fast division).
     pub stride_y: usize,
+    /// Pre-computed edge strides for branchless direction dispatch.
+    /// `[1, stride_y, stride_z, 0]` - index by direction (0=X, 1=Y, 2=Z).
+    pub edge_strides: [u32; 4],
     /// Bitmask identifying nodes at the start of their row within a block.
     pub row_start_mask: u64,
     /// Bitmask identifying nodes at the end of their row within a block.
@@ -241,7 +244,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
 
         let ingestion_list = arena.alloc_slice::<u32>(num_blocks).unwrap();
 
-        let num_edges = alloc_nodes * 3;
+        // Use * 4 (power of 2) instead of * 3 to enable fast shift/mask decoding
+        // in reconstruct_corrections (>> 2 and & 3 vs expensive / 3 and % 3)
+        let num_edges = alloc_nodes * 4;
         let num_edge_words = num_edges.div_ceil(64);
         let edge_bitmap = arena
             .alloc_slice_aligned::<u64>(num_edge_words, 64)
@@ -267,6 +272,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
             width,
             height,
             stride_y,
+            edge_strides: [1, stride_y as u32, stride_z as u32, 0],
             row_start_mask,
             row_end_mask,
             blocks_state,

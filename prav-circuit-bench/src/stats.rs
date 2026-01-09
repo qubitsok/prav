@@ -207,9 +207,7 @@ mod tests {
 
     #[test]
     fn test_calculate_percentiles() {
-        let times: Vec<Duration> = (1..=100)
-            .map(|i| Duration::from_micros(i))
-            .collect();
+        let times: Vec<Duration> = (1..=100).map(Duration::from_micros).collect();
 
         let stats = calculate_percentiles(&times);
         assert!((stats.avg_us - 50.5).abs() < 0.1);
@@ -284,7 +282,11 @@ mod tests {
         // low LER = 150/(10000*3) = 0.005
         // high LER = 50/(10000*5) = 0.001
         // Lambda = 0.005/0.001 = 5.0
-        assert!((lambda.lambda - 5.0).abs() < 0.01, "lambda={}", lambda.lambda);
+        assert!(
+            (lambda.lambda - 5.0).abs() < 0.01,
+            "lambda={}",
+            lambda.lambda
+        );
         assert!(lambda.lambda_err > 0.0);
     }
 }

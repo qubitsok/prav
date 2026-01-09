@@ -15,10 +15,12 @@ use clap::Parser;
 use fusion_blossom::mwpm_solver::{PrimalDualSolver, SolverSerial};
 use fusion_blossom::util::SyndromePattern;
 
-use prav_core::{Arena, DecoderBuilder, DynDecoder, EdgeCorrection, SquareGrid, required_buffer_size};
+use prav_core::{
+    Arena, DecoderBuilder, DynDecoder, EdgeCorrection, SquareGrid, required_buffer_size,
+};
 
 use crate::graph::create_surface_code_graph;
-use crate::stats::{calculate_percentiles, format_number, LatencyStats};
+use crate::stats::{LatencyStats, calculate_percentiles, format_number};
 use crate::syndrome::{count_defects, generate_prav_syndromes, prav_to_fusion_blossom};
 use crate::verification::{verify_fb_corrections, verify_prav_corrections};
 
@@ -95,7 +97,11 @@ fn benchmark_with_verification(
     prav_decoder: &mut DynDecoder<SquareGrid>,
     fb_solver: &mut SolverSerial,
     prav_syndromes: &[Vec<u64>],
-    edges: &[(fusion_blossom::util::VertexIndex, fusion_blossom::util::VertexIndex, fusion_blossom::util::Weight)],
+    edges: &[(
+        fusion_blossom::util::VertexIndex,
+        fusion_blossom::util::VertexIndex,
+        fusion_blossom::util::Weight,
+    )],
     width: usize,
     height: usize,
 ) -> BenchmarkResults {
@@ -188,13 +194,8 @@ fn run_benchmark_for_grid(
         warmup_fusion_blossom(&mut fb_solver, width, height);
 
         // Generate syndromes
-        let prav_syndromes = generate_prav_syndromes(
-            width,
-            height,
-            p,
-            num_shots,
-            seed + (p * 1_000_000.0) as u64,
-        );
+        let prav_syndromes =
+            generate_prav_syndromes(width, height, p, num_shots, seed + (p * 1_000_000.0) as u64);
 
         // Run benchmark with verification
         let bench_result = benchmark_with_verification(
@@ -211,8 +212,8 @@ fn run_benchmark_for_grid(
         let fb_stats = calculate_percentiles(&bench_result.fb_times);
 
         // Calculate parity matches
-        let all_verified = bench_result.prav_verified == num_shots
-            && bench_result.fb_verified == num_shots;
+        let all_verified =
+            bench_result.prav_verified == num_shots && bench_result.fb_verified == num_shots;
         let parity_matches = if all_verified {
             num_shots
         } else {
@@ -224,8 +225,7 @@ fn run_benchmark_for_grid(
 
         println!(
             "done (prav: {:.2}us [{:.0}%], FB: {:.2}us [{:.0}%])",
-            prav_stats.avg_us, prav_pct,
-            fb_stats.avg_us, fb_pct
+            prav_stats.avg_us, prav_pct, fb_stats.avg_us, fb_pct
         );
 
         results.push(ErrorRateResults {
@@ -364,18 +364,12 @@ fn print_results_for_grid(results: &[ErrorRateResults], size: usize, num_shots: 
 
     // Correctness verification table
     println!("\nCorrectness Verification:");
-    println!(
-        "{:-<14}+{:-<20}+{:-<24}+{:-<18}",
-        "", "", "", ""
-    );
+    println!("{:-<14}+{:-<20}+{:-<24}+{:-<18}", "", "", "", "");
     println!(
         "{:>14}|{:>20}|{:>24}|{:>18}",
         "Error Rate", "prav Success", "fusion-blossom Success", "Feature Parity"
     );
-    println!(
-        "{:-<14}+{:-<20}+{:-<24}+{:-<18}",
-        "", "", "", ""
-    );
+    println!("{:-<14}+{:-<20}+{:-<24}+{:-<18}", "", "", "", "");
     for r in results {
         let prav_pct = 100.0 * r.prav_verified as f64 / r.num_shots as f64;
         let fb_pct = 100.0 * r.fb_verified as f64 / r.num_shots as f64;
@@ -390,10 +384,7 @@ fn print_results_for_grid(results: &[ErrorRateResults], size: usize, num_shots: 
             parity_pct,
         );
     }
-    println!(
-        "{:-<14}+{:-<20}+{:-<24}+{:-<18}",
-        "", "", "", ""
-    );
+    println!("{:-<14}+{:-<20}+{:-<24}+{:-<18}", "", "", "", "");
 
     // Correction counts
     println!("\nCorrection Counts:");
@@ -474,10 +465,7 @@ fn print_summary(all_results: &[(usize, Vec<ErrorRateResults>)]) {
         format_number(total_shots)
     );
     println!("Feature parity: {:.2}%", parity_rate);
-    println!(
-        "Average speedup vs fusion-blossom: {:.2}x",
-        avg_speedup
-    );
+    println!("Average speedup vs fusion-blossom: {:.2}x", avg_speedup);
 
     if prav_success_rate == 100.0 && fb_success_rate == 100.0 {
         println!();

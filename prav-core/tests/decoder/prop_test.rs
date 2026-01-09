@@ -97,7 +97,7 @@ fn run_prop_test_scenario<const STRIDE_Y: usize>(
     let stride = STRIDE_Y;
     let total_nodes = stride * stride;
 
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
     let mut dense_defects = vec![0u64; num_blocks];
 
     for (x, y) in defects {

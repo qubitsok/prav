@@ -134,9 +134,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
         if mask_lo != 0 && self.merge_shifted_32(mask_lo, base_src, shift, base_target) {
             expanded = true;
         }
-        if mask_hi != 0
-            && self.merge_shifted_32(mask_hi, base_src + 32, shift, base_target + 32)
-        {
+        if mask_hi != 0 && self.merge_shifted_32(mask_hi, base_src + 32, shift, base_target + 32) {
             expanded = true;
         }
         expanded

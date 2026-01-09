@@ -23,7 +23,7 @@ pub fn create_surface_code_graph(
     // IMPORTANT: fusion-blossom requires EVEN weights
     let p = error_prob.clamp(1e-10, 1.0 - 1e-10);
     let weight = ((1.0 - p) / p).ln();
-    let scaled_weight = ((weight * 500.0) as Weight) * 2;  // Ensure even weight
+    let scaled_weight = ((weight * 500.0) as Weight) * 2; // Ensure even weight
 
     // Horizontal edges (between horizontally adjacent nodes)
     for y in 0..height {
@@ -68,11 +68,8 @@ pub fn create_surface_code_graph(
         weighted_edges.push((node as VertexIndex, boundary_vertex, scaled_weight));
     }
 
-    let initializer = SolverInitializer::new(
-        vertex_num + 1,
-        weighted_edges.clone(),
-        virtual_vertices,
-    );
+    let initializer =
+        SolverInitializer::new(vertex_num + 1, weighted_edges.clone(), virtual_vertices);
 
     (initializer, weighted_edges)
 }

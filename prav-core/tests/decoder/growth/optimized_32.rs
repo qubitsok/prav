@@ -43,7 +43,7 @@ fn test_optimized_32_signature_and_logic() {
 
         // Make them have different roots
         let base = blk_idx * 64;
-        state.parents[base + 0] = (base + 0) as u32;
+        state.parents[base] = base as u32;
         state.parents[base + 2] = (base + 2) as u32;
     }
 
@@ -52,7 +52,7 @@ fn test_optimized_32_signature_and_logic() {
     }
 
     // They should merge at bit 1 (0 -> 1 <- 2)
-    let root0 = state.find((blk_idx * 64 + 0) as u32);
+    let root0 = state.find((blk_idx * 64) as u32);
     let root2 = state.find((blk_idx * 64 + 2) as u32);
     assert_eq!(
         root0, root2,

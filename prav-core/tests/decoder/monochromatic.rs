@@ -243,14 +243,11 @@ fn test_hoisted_root_merge_logic() {
 
         assert_ne!(decoder.find(root_mono), decoder.find(root_down));
 
-
         decoder.parents[0] = 1000;
 
         decoder.parents[1000] = 1000; // 1000 is a root.
 
-
         decoder.blocks_state[blk_up].root = 1000;
-
 
         decoder.process_block_small_stride::<false>(blk_mono);
 

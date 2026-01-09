@@ -101,7 +101,7 @@ fn run_bench(
     };
 
     let prefix = taskset_prefix(pin_core);
-    
+
     // Convert topology enum to string arg
     let topo_str = topology.to_possible_value().unwrap().get_name().to_string();
     let app_args = format!("-- --topology {}", topo_str);
@@ -119,7 +119,10 @@ fn run_bench(
             println!("   [Clean] Cleaning bench-suite...");
             cmd!(sh, "cargo clean -p bench-suite").run()?;
 
-            let cmd_str = format!("{}cargo run -p bench-suite {} {}", prefix, profile_flag, app_args);
+            let cmd_str = format!(
+                "{}cargo run -p bench-suite {} {}",
+                prefix, profile_flag, app_args
+            );
             cmd!(sh, "bash -c {cmd_str}").run()?;
         }
         Target::Aarch64 => {
@@ -181,8 +184,8 @@ fn run_bench(
                     -semihosting",
                     prefix, binary_r5
                 );
-                
-                // Note: We cannot easily pass CLI args to bare-metal QEMU via semihosting 
+
+                // Note: We cannot easily pass CLI args to bare-metal QEMU via semihosting
                 // without complex setup (semihosting-args).
                 // For now, we warn that topology selection is not supported on bare metal.
                 if topology != TopologyArg::Square {
@@ -245,9 +248,9 @@ fn run_bench(
             // We'd need to modify the JS wrapper or the Rust code to read usage of `std::env::args` in wasm.
             // But `std::env::args` in wasm32-unknown-unknown is usually empty or stubbed unless using WASI.
             // We are using `wasm-bindgen` with `nodejs` target.
-            
+
             println!("!! Warning: Topology selection on Wasm32 (Node.js) requires extra setup. Ignoring arg.");
-            
+
             let cmd_str = format!("{}node {}/bench-suite.js", prefix, out_dir);
             cmd!(sh, "bash -c {cmd_str}").run()?;
         }

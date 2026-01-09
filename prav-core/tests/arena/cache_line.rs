@@ -19,8 +19,8 @@ fn test_stripe_partitioning_logic() {
     // Replicating get_stripe_range logic for verification
     fn get_stripe_range(t_idx: usize, num_threads: usize, total_blocks: usize) -> (usize, usize) {
         let align = 32;
-        let blocks_per_thread = (total_blocks + num_threads - 1) / num_threads;
-        let aligned_per_thread = ((blocks_per_thread + align - 1) / align) * align;
+        let blocks_per_thread = total_blocks.div_ceil(num_threads);
+        let aligned_per_thread = blocks_per_thread.div_ceil(align) * align;
 
         let start = (t_idx * aligned_per_thread).min(total_blocks);
         let end = (start + aligned_per_thread).min(total_blocks);

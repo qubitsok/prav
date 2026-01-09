@@ -6,5 +6,7 @@
 pub mod parser;
 pub mod types;
 
+#[allow(unused_imports)]
 pub use parser::parse_dem;
+#[allow(unused_imports)]
 pub use types::ParsedDem;

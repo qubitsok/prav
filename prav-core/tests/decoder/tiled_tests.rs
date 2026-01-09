@@ -171,7 +171,11 @@ fn test_tiled_initialize_corner_partial() {
         total_valid += block.valid_mask.count_ones() as u64;
     }
 
-    assert_eq!(total_valid, 48 * 48, "48x48 grid should have 2304 valid nodes");
+    assert_eq!(
+        total_valid,
+        48 * 48,
+        "48x48 grid should have 2304 valid nodes"
+    );
 }
 
 // =============================================================================
@@ -225,9 +229,18 @@ fn test_tiled_node_mapping_out_of_bounds() {
     let tiles_x = 1;
 
     // Out of bounds should return None
-    assert!(get_tiled_node(32, 32, tiles_x, 32, 0).is_none(), "x=32 should be out of bounds");
-    assert!(get_tiled_node(32, 32, tiles_x, 0, 32).is_none(), "y=32 should be out of bounds");
-    assert!(get_tiled_node(32, 32, tiles_x, 100, 100).is_none(), "Both out of bounds");
+    assert!(
+        get_tiled_node(32, 32, tiles_x, 32, 0).is_none(),
+        "x=32 should be out of bounds"
+    );
+    assert!(
+        get_tiled_node(32, 32, tiles_x, 0, 32).is_none(),
+        "y=32 should be out of bounds"
+    );
+    assert!(
+        get_tiled_node(32, 32, tiles_x, 100, 100).is_none(),
+        "Both out of bounds"
+    );
 }
 
 #[test]
@@ -268,9 +281,13 @@ fn test_tiled_coordinate_round_trip() {
             if let Some(node) = get_tiled_node(width, height, tiles_x, x, y) {
                 let (rx, ry) = get_global_from_tiled(tiles_x, node);
                 assert_eq!(
-                    (rx, ry), (x, y),
+                    (rx, ry),
+                    (x, y),
                     "Round trip failed for ({}, {}): got ({}, {})",
-                    x, y, rx, ry
+                    x,
+                    y,
+                    rx,
+                    ry
                 );
             }
         }
@@ -354,7 +371,11 @@ fn test_tiled_union_marks_dirty() {
     decoder.union(0, 100);
 
     // At least one block should be dirty
-    let dirty_count: u32 = decoder.block_dirty_mask.iter().map(|w| w.count_ones()).sum();
+    let dirty_count: u32 = decoder
+        .block_dirty_mask
+        .iter()
+        .map(|w| w.count_ones())
+        .sum();
     assert!(dirty_count > 0, "Union should mark blocks dirty");
 }
 
@@ -441,7 +462,11 @@ fn test_load_dense_syndromes_single_defect() {
     decoder.load_dense_syndromes(&syndromes);
 
     // Block 0 should have defect at bit 0
-    assert_ne!(decoder.blocks_state[0].boundary & 1, 0, "Defect should be loaded");
+    assert_ne!(
+        decoder.blocks_state[0].boundary & 1,
+        0,
+        "Defect should be loaded"
+    );
     assert_ne!(decoder.defect_mask[0] & 1, 0, "Defect mask should be set");
 }
 
@@ -540,7 +565,11 @@ fn test_tiled_blocks_per_tile() {
     let num_tiles = decoder.tiles_x * decoder.tiles_y;
     let expected_blocks = num_tiles * 16;
 
-    assert_eq!(decoder.blocks_state.len(), expected_blocks, "Should have correct number of blocks");
+    assert_eq!(
+        decoder.blocks_state.len(),
+        expected_blocks,
+        "Should have correct number of blocks"
+    );
 }
 
 #[test]

@@ -544,12 +544,10 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
 
                 // Boundary connection check
                 let boundary_connect_mask = spread_to_z_up & !valid_z_up;
-                if boundary_connect_mask != 0 {
-                    if self.union_roots(canonical_root, boundary_node) {
-                        expanded = true;
-                        if canonical_root < boundary_node {
-                            canonical_root = boundary_node;
-                        }
+                if boundary_connect_mask != 0 && self.union_roots(canonical_root, boundary_node) {
+                    expanded = true;
+                    if canonical_root < boundary_node {
+                        canonical_root = boundary_node;
                     }
                 }
 
@@ -620,12 +618,10 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
 
                 // Boundary connection check
                 let boundary_connect_mask = spread_to_z_down & !valid_z_down;
-                if boundary_connect_mask != 0 {
-                    if self.union_roots(canonical_root, boundary_node) {
-                        expanded = true;
-                        if canonical_root < boundary_node {
-                            canonical_root = boundary_node;
-                        }
+                if boundary_connect_mask != 0 && self.union_roots(canonical_root, boundary_node) {
+                    expanded = true;
+                    if canonical_root < boundary_node {
+                        canonical_root = boundary_node;
                     }
                 }
 
@@ -829,9 +825,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
         }
         // Horizontal pairs (X-direction)
         let horizontal = (spread_boundary & (spread_boundary << 1)) & !self.row_start_mask;
-        if horizontal != 0
-            && self.merge_shifted(horizontal, base_global, -1, base_global)
-        {
+        if horizontal != 0 && self.merge_shifted(horizontal, base_global, -1, base_global) {
             expanded = true;
         }
 
@@ -1375,7 +1369,10 @@ mod tests {
             block.effective_mask = !0;
 
             let expanded = decoder.process_mono::<false>(0, 0);
-            assert!(!expanded, "process_mono with zero boundary should return false");
+            assert!(
+                !expanded,
+                "process_mono with zero boundary should return false"
+            );
         }
     }
 
@@ -1396,7 +1393,10 @@ mod tests {
             block.effective_mask = !0;
 
             let expanded = decoder.process_poly::<false>(0);
-            assert!(!expanded, "process_poly with zero boundary should return false");
+            assert!(
+                !expanded,
+                "process_poly with zero boundary should return false"
+            );
         }
     }
 
@@ -1466,7 +1466,10 @@ mod tests {
 
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root64 = decoder.find(64);
-            assert_eq!(root64, boundary_node, "Should connect to boundary via invalid up neighbor");
+            assert_eq!(
+                root64, boundary_node,
+                "Should connect to boundary via invalid up neighbor"
+            );
         }
     }
 
@@ -1564,7 +1567,10 @@ mod tests {
 
         // Verify indices are within bounds
         let parents_len = decoder.parents.len();
-        assert!(base + 63 < parents_len, "Last node of last data block must fit in parents array");
+        assert!(
+            base + 63 < parents_len,
+            "Last node of last data block must fit in parents array"
+        );
 
         unsafe {
             // Last data block has boundary at bottom row
@@ -1585,7 +1591,10 @@ mod tests {
 
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root = decoder.find((base + 48) as u32);
-            assert_eq!(root, boundary_node, "Bottom row of last data block should connect to boundary");
+            assert_eq!(
+                root, boundary_node,
+                "Bottom row of last data block should connect to boundary"
+            );
         }
     }
 
@@ -1641,7 +1650,10 @@ mod tests {
 
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root7 = decoder.find(7);
-            assert_eq!(root7, boundary_node, "Right edge should connect to boundary");
+            assert_eq!(
+                root7, boundary_node,
+                "Right edge should connect to boundary"
+            );
         }
     }
 
@@ -1761,7 +1773,10 @@ mod tests {
             // Should have merged horizontally
             let root0 = decoder.find(0);
             let root1 = decoder.find(1);
-            assert_eq!(root0, root1, "Horizontal neighbors should merge in poly path");
+            assert_eq!(
+                root0, root1,
+                "Horizontal neighbors should merge in poly path"
+            );
         }
     }
 
@@ -1799,7 +1814,10 @@ mod tests {
 
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root64 = decoder.find(64);
-            assert_eq!(root64, boundary_node, "Poly should connect to boundary via invalid up");
+            assert_eq!(
+                root64, boundary_node,
+                "Poly should connect to boundary via invalid up"
+            );
         }
     }
 
@@ -1837,7 +1855,10 @@ mod tests {
 
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root48 = decoder.find(48);
-            assert_eq!(root48, boundary_node, "Poly should connect to boundary via invalid down");
+            assert_eq!(
+                root48, boundary_node,
+                "Poly should connect to boundary via invalid down"
+            );
         }
     }
 
@@ -1870,8 +1891,14 @@ mod tests {
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root0 = decoder.find(0); // Left edge
             let root7 = decoder.find(7); // Right edge
-            assert_eq!(root0, boundary_node, "Left edge should connect to boundary in poly");
-            assert_eq!(root7, boundary_node, "Right edge should connect to boundary in poly");
+            assert_eq!(
+                root0, boundary_node,
+                "Left edge should connect to boundary in poly"
+            );
+            assert_eq!(
+                root7, boundary_node,
+                "Right edge should connect to boundary in poly"
+            );
         }
     }
 
@@ -1900,7 +1927,10 @@ mod tests {
 
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root0 = decoder.find(0);
-            assert_eq!(root0, boundary_node, "Top row should connect to boundary in poly");
+            assert_eq!(
+                root0, boundary_node,
+                "Top row should connect to boundary in poly"
+            );
         }
     }
 
@@ -1922,7 +1952,10 @@ mod tests {
 
         // Verify indices are within bounds
         let parents_len = decoder.parents.len();
-        assert!(base + 63 < parents_len, "Last node of last data block must fit in parents array");
+        assert!(
+            base + 63 < parents_len,
+            "Last node of last data block must fit in parents array"
+        );
 
         unsafe {
             // Last data block is polychromatic with bottom boundary (row 3 = bits 48-63)
@@ -1941,7 +1974,10 @@ mod tests {
 
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root = decoder.find((base + 48) as u32);
-            assert_eq!(root, boundary_node, "Bottom row of last data block should connect to boundary in poly");
+            assert_eq!(
+                root, boundary_node,
+                "Bottom row of last data block should connect to boundary in poly"
+            );
         }
     }
 
@@ -1983,7 +2019,10 @@ mod tests {
 
             // The find operation during process_mono should have resolved this
             let root65 = decoder.find(65);
-            assert_eq!(root65, 66, "Should use actual root after cache invalidation");
+            assert_eq!(
+                root65, 66,
+                "Should use actual root after cache invalidation"
+            );
         }
     }
 
@@ -2104,8 +2143,10 @@ mod tests {
             // Should have spread vertically through shift_2
             // With stride 2, vertical spread to bit 2 (0 + stride)
             let occupied = decoder.blocks_state.get_unchecked(0).occupied;
-            assert!(occupied & (1 << 2) != 0 || occupied & (1 << 1) != 0,
-                "Should spread with small stride");
+            assert!(
+                occupied & (1 << 2) != 0 || occupied & (1 << 1) != 0,
+                "Should spread with small stride"
+            );
         }
     }
 
@@ -2163,7 +2204,11 @@ mod tests {
 
             // Block should now be marked as monochromatic
             let new_root = decoder.blocks_state.get_unchecked(0).root;
-            assert_ne!(new_root, u32::MAX, "Single boundary bit should convert to mono");
+            assert_ne!(
+                new_root,
+                u32::MAX,
+                "Single boundary bit should convert to mono"
+            );
         }
     }
 
@@ -2254,7 +2299,10 @@ mod tests {
             let expanded = decoder.process_mono::<false>(1, 64);
 
             // Processing should expand (grow into block 0's unoccupied space)
-            assert!(expanded, "Should expand when growing into same-cluster neighbor");
+            assert!(
+                expanded,
+                "Should expand when growing into same-cluster neighbor"
+            );
         }
     }
 
@@ -2299,7 +2347,10 @@ mod tests {
             // Should connect to boundary node
             let boundary_node = (decoder.parents.len() - 1) as u32;
             let root = decoder.find((base + 48) as u32);
-            assert_eq!(root, boundary_node, "Last block bottom row should connect to boundary");
+            assert_eq!(
+                root, boundary_node,
+                "Last block bottom row should connect to boundary"
+            );
         }
     }
 

@@ -1,3 +1,6 @@
+// Benchmark functions intentionally pass unit values to black_box to prevent optimization
+#![allow(clippy::unit_arg)]
+
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
 use std::hint::black_box;
 
@@ -19,7 +22,7 @@ fn generate_dense_defects(count: usize, w: usize, h: usize) -> Vec<u64> {
     let max_dim = w.max(h);
     let pow2 = max_dim.next_power_of_two();
     let total_morton = pow2 * pow2;
-    let num_blocks = (total_morton + 1 + 63) / 64;
+    let num_blocks = (total_morton + 1).div_ceil(64);
     let mut dense = vec![0u64; num_blocks];
 
     let mut seed = 123456789u64;

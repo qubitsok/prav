@@ -30,9 +30,9 @@
 //! ```
 
 use crate::arena::Arena;
+use crate::decoder::growth::ClusterGrowth;
 use crate::decoder::state::DecodingState;
 use crate::decoder::types::EdgeCorrection;
-use crate::decoder::growth::ClusterGrowth;
 use crate::topology::Topology;
 use core::marker::PhantomData;
 
@@ -117,7 +117,10 @@ impl<T: Topology> DecoderBuilder<T> {
     #[must_use]
     pub const fn stride_y(&self) -> usize {
         let is_3d = self.depth > 1;
-        let max_dim = const_max(self.width, const_max(self.height, if is_3d { self.depth } else { 1 }));
+        let max_dim = const_max(
+            self.width,
+            const_max(self.height, if is_3d { self.depth } else { 1 }),
+        );
         max_dim.next_power_of_two()
     }
 
@@ -148,34 +151,64 @@ impl<T: Topology> DecoderBuilder<T> {
 
         match stride {
             1 => Ok(DynDecoder::S1(DecodingState::<T, 1>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             2 => Ok(DynDecoder::S2(DecodingState::<T, 2>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             4 => Ok(DynDecoder::S4(DecodingState::<T, 4>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             8 => Ok(DynDecoder::S8(DecodingState::<T, 8>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             16 => Ok(DynDecoder::S16(DecodingState::<T, 16>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             32 => Ok(DynDecoder::S32(DecodingState::<T, 32>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             64 => Ok(DynDecoder::S64(DecodingState::<T, 64>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             128 => Ok(DynDecoder::S128(DecodingState::<T, 128>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             256 => Ok(DynDecoder::S256(DecodingState::<T, 256>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             512 => Ok(DynDecoder::S512(DecodingState::<T, 512>::new(
-                arena, self.width, self.height, self.depth
+                arena,
+                self.width,
+                self.height,
+                self.depth,
             ))),
             _ => Err("Grid too large: max dimension exceeds 512"),
         }

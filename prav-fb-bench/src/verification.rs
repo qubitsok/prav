@@ -75,17 +75,17 @@ pub fn verify_fb_corrections(
     let mut syndrome_change = vec![false; num_nodes];
 
     for &edge_idx in edge_corrections {
-        if (edge_idx as usize) < edges.len() {
-            let (u, v, _) = edges[edge_idx as usize];
+        if edge_idx < edges.len() {
+            let (u, v, _) = edges[edge_idx];
 
             // Toggle at u if it's a real node (not boundary)
-            if (u as usize) < num_nodes {
-                syndrome_change[u as usize] ^= true;
+            if u < num_nodes {
+                syndrome_change[u] ^= true;
             }
 
             // Toggle at v if it's a real node (not boundary)
-            if (v as usize) < num_nodes {
-                syndrome_change[v as usize] ^= true;
+            if v < num_nodes {
+                syndrome_change[v] ^= true;
             }
         }
     }
@@ -93,8 +93,8 @@ pub fn verify_fb_corrections(
     // Build original syndrome as a set
     let mut original_syndrome = vec![false; num_nodes];
     for &d in defects {
-        if (d as usize) < num_nodes {
-            original_syndrome[d as usize] = true;
+        if d < num_nodes {
+            original_syndrome[d] = true;
         }
     }
 

@@ -102,7 +102,7 @@ fn test_stride32_poly_dispatch() {
 
         // Set up different roots
         let base = 64;
-        state.parents[base + 0] = (base + 0) as u32; // Root at node 64
+        state.parents[base] = base as u32; // Root at node 64
         state.parents[base + 32] = (base + 32) as u32; // Root at node 96
 
         state.process_block_small_stride::<false>(1);

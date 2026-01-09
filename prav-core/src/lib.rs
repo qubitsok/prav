@@ -100,8 +100,8 @@ pub use decoder::{DecoderBuilder, DynDecoder};
 
 // Core decoder types
 pub use decoder::{
-    BlockStateHot, BoundaryConfig, DecodingState, EdgeCorrection, TiledDecodingState,
-    FLAG_VALID_FULL,
+    BlockStateHot, BoundaryConfig, DecodingState, EdgeCorrection, FLAG_VALID_FULL,
+    TiledDecodingState,
 };
 
 // Decoder traits (for advanced users and benchmarks)
@@ -111,12 +111,12 @@ pub use decoder::{ClusterGrowth, Peeling, StaticGraph, UnionFind};
 pub use qec_engine::QecEngine;
 
 // Testing utilities
-pub use testing_grids::{isqrt, GridConfig, TestGrids, ERROR_PROBS};
-pub use testing_grids_3d::{Grid3DConfig, SurfaceCodeType, TestGrids3D, CIRCUIT_ERROR_PROBS};
+pub use testing_grids::{ERROR_PROBS, GridConfig, TestGrids, isqrt};
+pub use testing_grids_3d::{CIRCUIT_ERROR_PROBS, Grid3DConfig, SurfaceCodeType, TestGrids3D};
 
 // Topology types
-pub use topology::{Grid3D, HoneycombGrid, SquareGrid, Topology, TriangularGrid};
 pub use topology::INTRA_BLOCK_NEIGHBORS;
+pub use topology::{Grid3D, HoneycombGrid, SquareGrid, Topology, TriangularGrid};
 
 // Morton encoding (commonly needed for defect generation)
 pub use intrinsics::morton_encode_2d;

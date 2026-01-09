@@ -14,7 +14,7 @@ fn run_test<const STRIDE_Y: usize>(w: usize, h: usize, defects: &[u32], test_nam
     let max_dim = w.max(h);
     let pow2 = max_dim.next_power_of_two();
     let total_nodes = pow2 * pow2;
-    let num_blocks = (total_nodes + 63) / 64;
+    let num_blocks = total_nodes.div_ceil(64);
     let mut dense_defects = vec![0u64; num_blocks];
 
     for &d in defects {

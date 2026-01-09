@@ -177,7 +177,7 @@ proptest! {
 
         prop_assume!(x < width && y < height);
 
-        let tiles_x = (width + 31) / 32;
+        let tiles_x = width.div_ceil(32);
 
         // Forward: (x, y) -> node_idx
         let tx = x / 32;

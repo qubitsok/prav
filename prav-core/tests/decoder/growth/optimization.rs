@@ -48,11 +48,9 @@ fn test_boundary_manual_linking_logic_verification() {
     // Simulate connect_boundary_shifted
     unsafe {
         let pu = *state.parents.get_unchecked(u as usize);
-        if pu == u {
-            if u < boundary_node {
-                *state.parents.get_unchecked_mut(u as usize) = boundary_node;
-                state.mark_block_dirty(u as usize >> 6);
-            }
+        if pu == u && u < boundary_node {
+            *state.parents.get_unchecked_mut(u as usize) = boundary_node;
+            state.mark_block_dirty(u as usize >> 6);
         }
     }
 

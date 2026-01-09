@@ -36,8 +36,9 @@ fn test_trace_bitmask_bfs_stride_gt_32() {
 
     // Verify edge was marked: u-b is vertical (diff = 64 = STRIDE_Y)
     // Low node is b=1. Dir = 1 (vertical).
-    // idx = 1 * 3 + 1 = 4
-    let idx = 1 * 3 + 1;
+    // idx = bit * 4 + direction = 1 * 4 + 1 = 5 (using power-of-4 encoding)
+    #[allow(clippy::identity_op)] // Formula shows bit * 4 + dir explicitly
+    let idx = 1 * 4 + 1;
     let word = idx / 64;
     let bit = idx % 64;
     assert_ne!(
@@ -77,10 +78,18 @@ fn test_trace_bfs_fallback_to_manhattan() {
 
     // Since BFS fails, it should fallback to trace_manhattan
     // which emits edges 0-1 and 1-2 directly
-    // 0-1: idx = 0*3+0 = 0
-    // 1-2: idx = 1*3+0 = 3
-    assert_ne!(decoder.edge_bitmap[0] & (1 << 0), 0, "Edge 0-1 via manhattan");
-    assert_ne!(decoder.edge_bitmap[0] & (1 << 3), 0, "Edge 1-2 via manhattan");
+    // 0-1: idx = 0*4+0 = 0
+    // 1-2: idx = 1*4+0 = 4
+    assert_ne!(
+        decoder.edge_bitmap[0] & (1 << 0),
+        0,
+        "Edge 0-1 via manhattan"
+    );
+    assert_ne!(
+        decoder.edge_bitmap[0] & (1 << 4),
+        0,
+        "Edge 1-2 via manhattan"
+    );
 }
 
 /// Test emit_linear with invalid (non-adjacent) direction.
@@ -127,8 +136,9 @@ fn test_reconstruct_corrections_buffer_overflow_edge() {
     let mut decoder = DecodingState::<SquareGrid, 8>::new(&mut arena, 8, 8, 1);
 
     // Mark multiple edges as dirty (more than buffer can hold)
-    // Set 5 bits in edge_bitmap[0]
-    decoder.edge_bitmap[0] = 0b11111; // 5 edges: bits 0,1,2,3,4
+    // Set 4 bits in edge_bitmap[0] (skip dir=3 padding bits)
+    // Valid edge positions: 0,1,2 (node 0), 4,5,6 (node 1) - skip bits 3, 7 (dir=3)
+    decoder.edge_bitmap[0] = 0b01110111; // 6 edges: bits 0,1,2, 4,5,6
     decoder.edge_dirty_list[0] = 0;
     decoder.edge_dirty_count = 1;
     decoder.edge_dirty_mask[0] = 1;
@@ -141,7 +151,10 @@ fn test_reconstruct_corrections_buffer_overflow_edge() {
     assert_eq!(count, 2, "Should truncate to buffer size");
 
     // Dirty state should still be cleared
-    assert_eq!(decoder.edge_dirty_count, 0, "edge_dirty_count should be cleared");
+    assert_eq!(
+        decoder.edge_dirty_count, 0,
+        "edge_dirty_count should be cleared"
+    );
     assert_eq!(decoder.edge_bitmap[0], 0, "edge_bitmap should be cleared");
 }
 
@@ -175,7 +188,10 @@ fn test_reconstruct_corrections_buffer_overflow_boundary() {
         decoder.boundary_dirty_count, 0,
         "boundary_dirty_count should be cleared"
     );
-    assert_eq!(decoder.boundary_bitmap[0], 0, "boundary_bitmap should be cleared");
+    assert_eq!(
+        decoder.boundary_bitmap[0], 0,
+        "boundary_bitmap should be cleared"
+    );
 }
 
 /// Test trace_manhattan in 3D with Z-axis movement only.
@@ -203,7 +219,7 @@ fn test_trace_manhattan_3d_z_axis() {
     // Should emit 2 Z-edges: (1,1,0)-(1,1,1) and (1,1,1)-(1,1,2)
     // Edge (1,1,0)-(1,1,1): u=9, dir=2, idx=9*3+2=29
     // Edge (1,1,1)-(1,1,2): u=stride_z+9, dir=2
-    let idx_0 = (stride_y + 1) * 3 + 2;
+    let idx_0 = (stride_y + 1) * 4 + 2;
     let word_0 = idx_0 / 64;
     let bit_0 = idx_0 % 64;
 
@@ -213,7 +229,7 @@ fn test_trace_manhattan_3d_z_axis() {
         "First Z-edge should be marked"
     );
 
-    let idx_1 = (stride_z + stride_y + 1) * 3 + 2;
+    let idx_1 = (stride_z + stride_y + 1) * 4 + 2;
     let word_1 = idx_1 / 64;
     let bit_1 = idx_1 % 64;
 
@@ -378,10 +394,18 @@ fn test_trace_bfs_vertical_movement() {
     decoder.trace_bfs(u, v, mask);
 
     // Should emit vertical edges 16-8 and 8-0
-    // 8-16: u=8, dir=1 (vertical), idx=8*3+1=25
-    // 0-8: u=0, dir=1 (vertical), idx=0*3+1=1
-    assert_ne!(decoder.edge_bitmap[0] & (1 << 25), 0, "Edge 8-16 should be marked");
-    assert_ne!(decoder.edge_bitmap[0] & (1 << 1), 0, "Edge 0-8 should be marked");
+    // 8-16: u=8, dir=1 (vertical), idx=8*4+1=33
+    // 0-8: u=0, dir=1 (vertical), idx=0*4+1=1
+    assert_ne!(
+        decoder.edge_bitmap[0] & (1 << 33),
+        0,
+        "Edge 8-16 should be marked"
+    );
+    assert_ne!(
+        decoder.edge_bitmap[0] & (1 << 1),
+        0,
+        "Edge 0-8 should be marked"
+    );
 }
 
 /// Test trace_manhattan when u is the boundary node.
@@ -430,11 +454,11 @@ fn test_trace_manhattan_backward_x() {
     decoder.trace_manhattan(u, v);
 
     // Should emit edges 2-3, 1-2, 0-1 (backward direction)
-    // 2-3: u=2, dir=0, idx=6
-    // 1-2: u=1, dir=0, idx=3
+    // 2-3: u=2, dir=0, idx=8
+    // 1-2: u=1, dir=0, idx=4
     // 0-1: u=0, dir=0, idx=0
-    assert_ne!(decoder.edge_bitmap[0] & (1 << 6), 0, "Edge 2-3");
-    assert_ne!(decoder.edge_bitmap[0] & (1 << 3), 0, "Edge 1-2");
+    assert_ne!(decoder.edge_bitmap[0] & (1 << 8), 0, "Edge 2-3");
+    assert_ne!(decoder.edge_bitmap[0] & (1 << 4), 0, "Edge 1-2");
     assert_ne!(decoder.edge_bitmap[0] & (1 << 0), 0, "Edge 0-1");
 }
 
@@ -484,7 +508,7 @@ fn test_trace_bitmask_bfs_impl_3d_z_neighbors() {
     );
 
     // Check Z-edge at mid
-    let z_edge_idx = (mid as usize) * 3 + 2; // dir=2 for Z
+    let z_edge_idx = (mid as usize) * 4 + 2; // dir=2 for Z
     let z_word = z_edge_idx / 64;
     let z_bit = z_edge_idx % 64;
     assert_ne!(
