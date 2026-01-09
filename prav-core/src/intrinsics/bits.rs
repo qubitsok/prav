@@ -24,13 +24,9 @@ pub fn prefetch_l1(ptr: *const u8) {
 
     #[cfg(target_arch = "aarch64")]
     unsafe {
-        // ARM64 prefetch: PRFM PLDL1KEEP
-        // _prefetch(ptr, READ, LOCALITY3) maps to PLDL1KEEP
-        core::arch::aarch64::_prefetch(
-            ptr as *const i8,
-            core::arch::aarch64::_PREFETCH_READ,
-            core::arch::aarch64::_PREFETCH_LOCALITY3,
-        );
+        // ARM64 prefetch: PRFM PLDL1KEEP (prefetch for read, L1 cache, keep in cache)
+        // Using inline assembly instead of unstable intrinsics
+        core::arch::asm!("prfm pldl1keep, [{0}]", in(reg) ptr, options(readonly, nostack, preserves_flags));
     }
 
     #[cfg(all(target_arch = "arm", not(target_arch = "aarch64")))]

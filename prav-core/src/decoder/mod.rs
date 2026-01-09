@@ -26,6 +26,9 @@ pub mod state;
 /// Tiled decoder for large grids with 32x32 tile optimization.
 pub mod tiled;
 
+/// Sparse syndrome decoder for low error rates.
+pub mod sparse;
+
 /// Union-Find data structure for efficient cluster merging.
 pub mod union_find;
 
@@ -59,3 +62,6 @@ pub use union_find::UnionFind;
 
 // Observable tracking
 pub use observables::{EdgeObservableLut, ObservableMode, phenomenological_boundary_observable};
+
+// Sparse decoder
+pub use sparse::{decode_sparse, extract_defects, SparseState, SPARSE_THRESHOLD};

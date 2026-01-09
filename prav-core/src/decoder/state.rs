@@ -153,6 +153,14 @@ pub struct DecodingState<'a, T: Topology, const STRIDE_Y: usize> {
     /// table provides the frame_changes for each edge.
     pub edge_observable_lut: Option<&'a EdgeObservableLut<'a>>,
 
+    // Sparse decoder optimization
+    /// Number of defects loaded (for sparse optimization).
+    pub defect_count: usize,
+    /// Defect positions for sparse optimization (up to 32 defects).
+    pub sparse_defects: [u32; 32],
+    /// Flag indicating whether any erasures are present.
+    pub has_erasures: bool,
+
     /// Phantom marker for the topology type parameter.
     pub _marker: core::marker::PhantomData<T>,
 }
@@ -322,6 +330,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
             predicted_observables: 0,
             observable_mode: ObservableMode::Disabled,
             edge_observable_lut: None,
+            defect_count: 0,
+            sparse_defects: [0; 32],
+            has_erasures: false,
             _marker: core::marker::PhantomData,
         };
 
@@ -433,16 +444,21 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
     /// which controls which nodes participate in cluster growth.
     pub fn load_erasures(&mut self, erasures: &[u64]) {
         let len = erasures.len().min(self.blocks_state.len());
+        let mut any_erasures = false;
         for (i, &val) in erasures.iter().take(len).enumerate() {
             self.blocks_state[i].erasure_mask = val;
             let valid = self.blocks_state[i].valid_mask;
             self.blocks_state[i].effective_mask = valid & !val;
+            if val != 0 {
+                any_erasures = true;
+            }
         }
         for block in self.blocks_state[len..].iter_mut() {
             block.erasure_mask = 0;
             let valid = block.valid_mask;
             block.effective_mask = valid;
         }
+        self.has_erasures = any_erasures;
     }
 
     /// Marks a block as modified for sparse reset tracking.
@@ -547,6 +563,9 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
 
         // Reset observable accumulator for next decode cycle
         self.predicted_observables = 0;
+
+        // Reset sparse defect tracking
+        self.defect_count = 0;
 
         let boundary_idx = self.parents.len() - 1;
         self.parents[boundary_idx] = boundary_idx as u32;

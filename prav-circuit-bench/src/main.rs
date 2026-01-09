@@ -84,7 +84,7 @@ use prav_core::{
     ObservableMode, TestGrids3D, required_buffer_size,
 };
 
-use crate::stats::{CSV_HEADER, SuppressionFactor, ThresholdPoint, calculate_percentiles};
+use crate::stats::{CSV_HEADER, LatencyStats, SuppressionFactor, ThresholdPoint, calculate_percentiles};
 use crate::surface_code::DetectorMapper;
 use crate::syndrome::{CircuitSampler, SyndromeWithLogical, generate_correlated_syndromes};
 use crate::verification::verify_with_logical;
@@ -203,6 +203,21 @@ struct Args {
     /// Prevents infinite loops for very low error rates.
     #[arg(long, default_value_t = 1_000_000)]
     max_shots: usize,
+
+    /// Run Helios-compatible benchmark: d=13, p=0.1% phenomenological noise.
+    ///
+    /// This mode produces output directly comparable to published decoder
+    /// benchmarks from the Helios paper (arXiv:2301.08419).
+    /// Equivalent to: --distances 13 --error-probs 0.001 --shots 50000
+    #[arg(long)]
+    helios: bool,
+
+    /// Run quick single-point benchmark at specified distance.
+    ///
+    /// Uses p=0.1% phenomenological noise with default shots.
+    /// Example: --quick-bench 13
+    #[arg(long, value_name = "DISTANCE")]
+    quick_bench: Option<usize>,
 }
 
 /// Error rates for threshold study mode.
@@ -396,7 +411,10 @@ fn get_config_for_distance(d: usize) -> Grid3DConfig {
         3 => TestGrids3D::D3,
         5 => TestGrids3D::D5,
         7 => TestGrids3D::D7,
+        9 => TestGrids3D::D9,
         11 => TestGrids3D::D11,
+        13 => TestGrids3D::D13,
+        15 => TestGrids3D::D15,
         17 => TestGrids3D::D17,
         21 => TestGrids3D::D21,
         _ => Grid3DConfig::for_rotated_surface(d),
@@ -634,8 +652,67 @@ fn run_dem_directory_benchmark(
     all_points
 }
 
+/// Print Helios-compatible benchmark summary with decoder comparison.
+///
+/// This output format is designed for easy comparison with results from the
+/// Helios paper (arXiv:2301.08419) and other QEC decoder benchmarks.
+fn print_helios_summary(point: &ThresholdPoint, stats: &stats::LatencyStats) {
+    println!();
+    println!("Helios-Compatible Benchmark Results");
+    println!("====================================");
+    println!();
+    println!("Configuration:");
+    println!("  Distance:        d = {}", point.distance);
+    println!("  Error Rate:      p = {:.2}%", point.physical_error_rate * 100.0);
+    println!("  Rounds:          {} measurement rounds", point.num_rounds);
+    println!("  Shots:           {}", point.num_shots);
+    println!("  Grid Size:       {}x{}x{}", point.distance - 1, point.distance - 1, point.num_rounds);
+    println!();
+    println!("Timing Results:");
+    println!("  Total decode:    {:.2} us (avg)", point.decode_time_us);
+    println!("  Per round:       {:.0} ns/round", point.time_per_round_ns());
+    println!("  Median (p50):    {:.2} us", stats.p50_us);
+    println!("  Tail (p99):      {:.2} us", stats.p99_us);
+    println!();
+    println!("Accuracy:");
+    println!("  Logical errors:  {}/{} shots", point.logical_errors, point.num_shots);
+    println!("  LER per round:   {:.2e}", point.ler_per_round);
+    println!();
+    if point.distance == 13 && (point.physical_error_rate - 0.001).abs() < 1e-6 {
+        println!("Comparison (d=13, p=0.1%, phenomenological noise):");
+        println!("  prav (this):     {:.0} ns/round", point.time_per_round_ns());
+        println!("  Sparse Blossom:  160 ns/round (M1 Max, MWPM)");
+        println!("  Fusion Blossom:  295 ns/round (M1 Max, MWPM)");
+        println!("  Helios (FPGA):   15 ns/round (VCU129, UF)");
+    } else {
+        println!("Performance:");
+        println!("  prav (this):     {:.0} ns/round", point.time_per_round_ns());
+        println!();
+        println!("Reference (d=13, p=0.1%, Helios paper):");
+        println!("  Sparse Blossom:  160 ns/round (M1 Max)");
+        println!("  Fusion Blossom:  295 ns/round (M1 Max)");
+        println!("  Helios (FPGA):   15 ns/round (VCU129)");
+    }
+    println!();
+    println!("Note: prav is a pure Rust implementation running on CPU.");
+    println!("Reference: arXiv:2301.08419, arXiv:2406.08491");
+}
+
 fn main() {
-    let args = Args::parse();
+    let mut args = Args::parse();
+
+    // Handle --helios mode: d=13, p=0.1%, 50000 shots
+    if args.helios {
+        args.distances = vec![13];
+        args.error_probs = Some(vec![0.001]);
+        args.shots = 50000;
+    }
+
+    // Handle --quick-bench mode
+    if let Some(d) = args.quick_bench {
+        args.distances = vec![d];
+        args.error_probs = Some(vec![0.001]);
+    }
 
     // Handle --dem-dir mode (batch DEM processing)
     if let Some(ref dem_dir) = args.dem_dir {
@@ -759,30 +836,38 @@ fn main() {
             // Output
             if args.csv {
                 println!("{}", point.to_csv());
+            } else if args.helios || args.quick_bench.is_some() {
+                // Helios mode: show detailed summary at the end
+                print_helios_summary(&point, &stats);
             } else {
                 print_info(&format!(
-                    "  p={:.4}: LER={:.2e}/rnd [{:.2e},{:.2e}], n={}, t={:.2}µs",
+                    "  p={:.4}: LER={:.2e}/rnd [{:.2e},{:.2e}], n={}, t={:.2}µs ({:.0} ns/rnd)",
                     p,
                     point.ler_per_round,
                     point.ler_ci_low,
                     point.ler_ci_high,
                     point.num_shots,
                     point.decode_time_us,
+                    point.time_per_round_ns(),
                 ));
             }
 
             all_points.push(point);
         }
 
-        print_info("");
+        if !args.helios && args.quick_bench.is_none() {
+            print_info("");
+        }
     }
 
     // Compute and display Lambda suppression factors
-    if !args.csv && distances.len() >= 2 {
+    if !args.csv && distances.len() >= 2 && !args.helios && args.quick_bench.is_none() {
         print_lambda_table(&all_points, &distances, &error_probs);
     }
 
-    print_info("Benchmark complete.");
+    if !args.csv && !args.helios && args.quick_bench.is_none() {
+        print_info("Benchmark complete.");
+    }
 }
 
 /// Print the Lambda (error suppression factor) table.

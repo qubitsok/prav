@@ -180,9 +180,22 @@ impl TestGrids3D {
     /// 6x6 detectors per round, 7 rounds = 252 detectors total.
     pub const D7: Grid3DConfig = Grid3DConfig::for_rotated_surface(7);
 
+    /// Distance-9 rotated surface code.
+    /// 8x8 detectors per round, 9 rounds = 576 detectors total.
+    pub const D9: Grid3DConfig = Grid3DConfig::for_rotated_surface(9);
+
     /// Distance-11 rotated surface code.
     /// 10x10 detectors per round, 11 rounds = 1100 detectors total.
     pub const D11: Grid3DConfig = Grid3DConfig::for_rotated_surface(11);
+
+    /// Distance-13 rotated surface code.
+    /// 12x12 detectors per round, 13 rounds = 1872 detectors total.
+    /// Key comparison point for Helios paper benchmarks.
+    pub const D13: Grid3DConfig = Grid3DConfig::for_rotated_surface(13);
+
+    /// Distance-15 rotated surface code.
+    /// 14x14 detectors per round, 15 rounds = 2940 detectors total.
+    pub const D15: Grid3DConfig = Grid3DConfig::for_rotated_surface(15);
 
     /// Distance-17 rotated surface code.
     /// 16x16 detectors per round, 17 rounds = 4352 detectors total.
@@ -193,12 +206,15 @@ impl TestGrids3D {
     pub const D21: Grid3DConfig = Grid3DConfig::for_rotated_surface(21);
 
     /// Returns all predefined rotated surface code configurations.
-    pub const fn all_rotated() -> [Grid3DConfig; 6] {
+    pub const fn all_rotated() -> [Grid3DConfig; 9] {
         [
             Self::D3,
             Self::D5,
             Self::D7,
+            Self::D9,
             Self::D11,
+            Self::D13,
+            Self::D15,
             Self::D17,
             Self::D21,
         ]
@@ -333,9 +349,22 @@ mod tests {
     #[test]
     fn test_all_rotated() {
         let configs = TestGrids3D::all_rotated();
-        assert_eq!(configs.len(), 6);
+        assert_eq!(configs.len(), 9);
         assert_eq!(configs[0].code_distance, 3);
-        assert_eq!(configs[5].code_distance, 21);
+        assert_eq!(configs[5].code_distance, 13); // Helios benchmark point
+        assert_eq!(configs[8].code_distance, 21);
+    }
+
+    #[test]
+    fn test_d13_helios_benchmark() {
+        let config = TestGrids3D::D13;
+        assert_eq!(config.code_distance, 13);
+        assert_eq!(config.width, 12);
+        assert_eq!(config.height, 12);
+        assert_eq!(config.depth, 13);
+        assert_eq!(config.num_rounds, 13);
+        // 12x12x13 = 1872 detectors
+        assert_eq!(config.num_detectors(), 1872);
     }
 
     #[test]

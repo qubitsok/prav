@@ -536,6 +536,9 @@ impl<'a, T: Topology> TiledDecodingState<'a, T> {
             predicted_observables: 0,
             observable_mode: crate::decoder::observables::ObservableMode::Disabled,
             edge_observable_lut: None,
+            defect_count: 0,
+            sparse_defects: [0; 32],
+            has_erasures: false,
             _marker: core::marker::PhantomData,
         };
 

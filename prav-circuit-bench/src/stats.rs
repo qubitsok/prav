@@ -98,6 +98,11 @@ pub struct ThresholdPoint {
 
     /// Average decoding time in microseconds.
     pub decode_time_us: f64,
+
+    /// Average time per measurement round in microseconds.
+    /// Calculated as decode_time_us / num_rounds.
+    /// This is the key metric for comparing with Helios/Sparse Blossom decoders.
+    pub time_per_round_us: f64,
 }
 
 impl ThresholdPoint {
@@ -134,6 +139,13 @@ impl ThresholdPoint {
         // Wilson score 95% CI (z = 1.96)
         let (ci_low, ci_high) = wilson_ci(logical_errors, total_rounds, 1.96);
 
+        // Time per measurement round (key metric for Helios comparison)
+        let time_per_round_us = if num_rounds > 0 {
+            decode_time_us / num_rounds as f64
+        } else {
+            decode_time_us
+        };
+
         Self {
             distance,
             physical_error_rate,
@@ -144,13 +156,14 @@ impl ThresholdPoint {
             ler_ci_low: ci_low,
             ler_ci_high: ci_high,
             decode_time_us,
+            time_per_round_us,
         }
     }
 
     /// Format as CSV row.
     pub fn to_csv(&self) -> String {
         format!(
-            "{},{:.6},{},{},{},{:.6e},{:.6e},{:.6e},{:.3}",
+            "{},{:.6},{},{},{},{:.6e},{:.6e},{:.6e},{:.3},{:.4}",
             self.distance,
             self.physical_error_rate,
             self.num_rounds,
@@ -160,7 +173,15 @@ impl ThresholdPoint {
             self.ler_ci_low,
             self.ler_ci_high,
             self.decode_time_us,
+            self.time_per_round_us,
         )
+    }
+
+    /// Time per measurement round in nanoseconds.
+    /// Convenience method for comparison with Helios paper benchmarks.
+    #[inline]
+    pub fn time_per_round_ns(&self) -> f64 {
+        self.time_per_round_us * 1000.0
     }
 }
 
@@ -299,8 +320,8 @@ pub fn wilson_ci(successes: usize, trials: usize, z: f64) -> (f64, f64) {
 /// CSV header for threshold study output.
 ///
 /// Columns: distance, physical_p, rounds, shots, logical_errors,
-/// ler_per_round, ler_ci_low, ler_ci_high, decode_us
-pub const CSV_HEADER: &str = "distance,physical_p,rounds,shots,logical_errors,ler_per_round,ler_ci_low,ler_ci_high,decode_us";
+/// ler_per_round, ler_ci_low, ler_ci_high, decode_us, time_per_round_us
+pub const CSV_HEADER: &str = "distance,physical_p,rounds,shots,logical_errors,ler_per_round,ler_ci_low,ler_ci_high,decode_us,time_per_round_us";
 
 /// Latency statistics for decoding performance analysis.
 ///
@@ -457,6 +478,16 @@ mod tests {
         // CI should bracket the point estimate
         assert!(point.ler_ci_low < point.ler_per_round);
         assert!(point.ler_ci_high > point.ler_per_round);
+
+        // Time per round = 0.15 µs / 5 rounds = 0.03 µs/round
+        assert!(
+            (point.time_per_round_us - 0.03).abs() < 1e-9,
+            "time_per_round_us={}",
+            point.time_per_round_us
+        );
+
+        // time_per_round_ns convenience method
+        assert!((point.time_per_round_ns() - 30.0).abs() < 1e-6);
     }
 
     #[test]

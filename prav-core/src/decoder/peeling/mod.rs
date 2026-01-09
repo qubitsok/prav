@@ -180,6 +180,9 @@ pub trait Peeling {
 
 impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, STRIDE_Y> {
     fn decode(&mut self, corrections: &mut [EdgeCorrection]) -> usize {
+        // Note: 2-defect fast path disabled as Phase 1 early termination
+        // already makes it fast enough and the coordinate conversion overhead
+        // negates the benefit.
         self.grow_clusters();
         self.peel_forest(corrections)
     }
@@ -189,21 +192,16 @@ impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, ST
         let boundary_node = (self.parents.len() - 1) as u32;
         let _is_small_grid = STRIDE_Y <= 32 && self.blocks_state.len() <= 17;
 
-        for blk_idx in 0..self.defect_mask.len() {
-            let mut word = unsafe { *self.defect_mask.get_unchecked(blk_idx) };
-            if word == 0 {
-                continue;
-            }
-
-            let base_node = blk_idx * 64;
-            while word != 0 {
-                let bit = tzcnt(word) as usize;
-                word &= word - 1;
-                let u = (base_node + bit) as u32;
+        // Fast path: use sparse_defects when we have few defects
+        if self.defect_count > 0 && self.defect_count <= 32 {
+            for i in 0..self.defect_count {
+                let u = self.sparse_defects[i];
 
                 if _is_small_grid {
                     let root = self.find(u);
                     if root == u && root != boundary_node {
+                        let blk_idx = (u as usize) / 64;
+                        let bit = (u as usize) % 64;
                         let occ = unsafe { self.blocks_state.get_unchecked(blk_idx).occupied };
                         if (occ & (1 << bit)) != 0 {
                             self.trace_bitmask_bfs(u);
@@ -213,6 +211,34 @@ impl<'a, T: Topology, const STRIDE_Y: usize> Peeling for DecodingState<'a, T, ST
                 }
 
                 self.trace_path(u, boundary_node);
+            }
+        } else {
+            // Dense path: scan all blocks
+            for blk_idx in 0..self.defect_mask.len() {
+                let mut word = unsafe { *self.defect_mask.get_unchecked(blk_idx) };
+                if word == 0 {
+                    continue;
+                }
+
+                let base_node = blk_idx * 64;
+                while word != 0 {
+                    let bit = tzcnt(word) as usize;
+                    word &= word - 1;
+                    let u = (base_node + bit) as u32;
+
+                    if _is_small_grid {
+                        let root = self.find(u);
+                        if root == u && root != boundary_node {
+                            let occ = unsafe { self.blocks_state.get_unchecked(blk_idx).occupied };
+                            if (occ & (1 << bit)) != 0 {
+                                self.trace_bitmask_bfs(u);
+                                continue;
+                            }
+                        }
+                    }
+
+                    self.trace_path(u, boundary_node);
+                }
             }
         }
 

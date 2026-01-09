@@ -149,6 +149,7 @@ impl<'a, T: Topology, const STRIDE_Y: usize> ClusterGrowth for DecodingState<'a,
     fn load_dense_syndromes(&mut self, syndromes: &[u64]) {
         self.ingestion_count = 0;
         self.active_block_mask = 0; // Reset for small grids
+        self.defect_count = 0; // Reset defect tracking for sparse optimization
         let limit = syndromes.len().min(self.blocks_state.len());
 
         if self.is_small_grid() {
@@ -156,6 +157,20 @@ impl<'a, T: Topology, const STRIDE_Y: usize> ClusterGrowth for DecodingState<'a,
                 // Eagerly sync all blocks
                 let word = unsafe { *syndromes.get_unchecked(blk_idx) };
                 if word != 0 {
+                    // Track individual defects for sparse optimization
+                    let base = (blk_idx * 64) as u32;
+                    let mut w = word;
+                    while w != 0 && self.defect_count < 32 {
+                        let bit = w.trailing_zeros();
+                        w &= w - 1;
+                        self.sparse_defects[self.defect_count] = base + bit;
+                        self.defect_count += 1;
+                    }
+                    // If more than 32 defects, just mark as > 32
+                    if w != 0 {
+                        self.defect_count = 33;
+                    }
+
                     unsafe {
                         self.mark_block_dirty(blk_idx);
                         let block = self.blocks_state.get_unchecked_mut(blk_idx);
@@ -195,6 +210,22 @@ impl<'a, T: Topology, const STRIDE_Y: usize> ClusterGrowth for DecodingState<'a,
             let blk_idx = unsafe { *self.ingestion_list.get_unchecked(i) } as usize;
             let word = unsafe { *syndromes.get_unchecked(blk_idx) };
 
+            // Track individual defects for sparse optimization
+            if self.defect_count <= 32 {
+                let base = (blk_idx * 64) as u32;
+                let mut w = word;
+                while w != 0 && self.defect_count < 32 {
+                    let bit = w.trailing_zeros();
+                    w &= w - 1;
+                    self.sparse_defects[self.defect_count] = base + bit;
+                    self.defect_count += 1;
+                }
+                // If more than 32 defects, just mark as > 32
+                if w != 0 {
+                    self.defect_count = 33;
+                }
+            }
+
             // Lazy Reset: Ensure block is ready for this epoch - REMOVED, assumed clean via sparse_reset
             unsafe {
                 self.mark_block_dirty(blk_idx);
@@ -217,9 +248,21 @@ impl<'a, T: Topology, const STRIDE_Y: usize> ClusterGrowth for DecodingState<'a,
 
     #[inline(never)]
     fn grow_clusters(&mut self) {
+        // Fast path: no defects
+        if self.defect_count == 0 {
+            return;
+        }
+
+        let boundary_node = (self.parents.len() - 1) as u32;
+
         if self.is_small_grid() {
             let max_dim = self.width.max(self.height).max(self.graph.depth);
-            let limit = max_dim * 16 + 128;
+            // Use shorter limit for sparse case (fewer iterations needed)
+            let limit = if self.defect_count <= 32 {
+                max_dim * 4 + 32
+            } else {
+                max_dim * 16 + 128
+            };
 
             for _ in 0..limit {
                 self.grow_bitmask_iteration();
@@ -227,17 +270,36 @@ impl<'a, T: Topology, const STRIDE_Y: usize> ClusterGrowth for DecodingState<'a,
                 if self.active_block_mask == 0 {
                     break;
                 }
+
+                // Early termination for sparse case: check if all defects resolved
+                if self.defect_count <= 32 && self.all_sparse_defects_resolved(boundary_node) {
+                    // Clear active mask since we're terminating early
+                    self.active_block_mask = 0;
+                    break;
+                }
             }
             return;
         }
 
         let max_dim = self.width.max(self.height).max(self.graph.depth);
-        let limit = max_dim * 16 + 128;
+        // Use shorter limit for sparse case
+        let limit = if self.defect_count <= 32 {
+            max_dim * 4 + 32
+        } else {
+            max_dim * 16 + 128
+        };
 
         for _ in 0..limit {
             // Check if active_mask is empty
             // Use iterator to check all words (SIMD optimized typically)
             if self.active_mask.iter().all(|&w| w == 0) {
+                break;
+            }
+
+            // Early termination for sparse case
+            if self.defect_count <= 32 && self.all_sparse_defects_resolved(boundary_node) {
+                // Clear active masks since we're terminating early
+                self.active_mask.fill(0);
                 break;
             }
 
@@ -346,5 +408,34 @@ impl<'a, T: Topology, const STRIDE_Y: usize> DecodingState<'a, T, STRIDE_Y> {
     #[inline(always)]
     unsafe fn process_block_silent(&mut self, blk_idx: usize) -> bool {
         self.process_block_small_stride::<true>(blk_idx)
+    }
+
+    /// Checks if all sparse defects have been resolved.
+    ///
+    /// Defects are resolved when they all share the same cluster root.
+    /// For odd numbers of defects, the root must be the boundary.
+    #[inline]
+    fn all_sparse_defects_resolved(&mut self, boundary_node: u32) -> bool {
+        if self.defect_count == 0 || self.defect_count > 32 {
+            return self.defect_count == 0;
+        }
+
+        // Find root of first defect
+        let first_root = self.find(self.sparse_defects[0]);
+
+        // Check if all defects share the same root
+        for i in 1..self.defect_count {
+            let root = self.find(self.sparse_defects[i]);
+            if root != first_root {
+                return false;
+            }
+        }
+
+        // All defects share a root. For odd count, must be boundary-connected.
+        if self.defect_count % 2 == 1 {
+            first_root == boundary_node
+        } else {
+            true
+        }
     }
 }
