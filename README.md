@@ -20,6 +20,7 @@ Quantum computers accumulate errors during computation. Quantum Error Correction
 |---------|-------------|-------|
 | [prav-core](prav-core/) | Core Rust library (`no_std`, zero-heap) | [crates.io](https://crates.io/crates/prav-core) · [docs.rs](https://docs.rs/prav-core) |
 | [prav-py](prav-py/) | Python bindings via PyO3/maturin | [PyPI](https://pypi.org/project/prav/) |
+| [prav-circuit-bench](prav-circuit-bench/) | Circuit-level QEC benchmarks and threshold studies | |
 | [prav-fb-bench](prav-fb-bench/) | Rust benchmark: prav-core vs fusion-blossom | |
 | [prav-py-bench](prav-py-bench/) | Python benchmark: prav vs PyMatching | |
 
@@ -73,6 +74,55 @@ corrections = decoder.decode(syndromes)
 
 These properties enable deployment on embedded systems and FPGAs. Memory usage is fixed at initialization. There is no garbage collection and no allocation latency. Timing is deterministic.
 
+## Advanced Decoders
+
+### Streaming Decoder (Real-time QEC)
+
+Process syndrome measurements round-by-round with a sliding window for low-latency decoding:
+
+```rust
+use prav_core::{Arena, StreamingConfig, StreamingDecoder, streaming_buffer_size, Grid3D};
+
+let config = StreamingConfig::for_rotated_surface(5, 3); // d=5, window=3
+let buf_size = streaming_buffer_size(config.width, config.height, config.window_size);
+let mut buffer = vec![0u8; buf_size];
+let mut arena = Arena::new(&mut buffer);
+
+let mut decoder: StreamingDecoder<Grid3D, 4> = StreamingDecoder::new(&mut arena, config);
+
+// Process rounds as they arrive
+for round_syndromes in syndrome_stream {
+    if let Some(committed) = decoder.ingest_round(&round_syndromes) {
+        apply_corrections(committed.round, committed.corrections);
+    }
+}
+// Flush remaining at end of stream
+for committed in decoder.flush() {
+    apply_corrections(committed.round, committed.corrections);
+}
+```
+
+### Color Code Decoder (Triangular Lattices)
+
+Decode triangular color codes using the restriction decoder approach with three parallel RGB decoders:
+
+```rust
+use prav_core::color_code::{ColorCodeDecoder, ColorCodeGrid3DConfig};
+use prav_core::Arena;
+
+let config = ColorCodeGrid3DConfig::for_triangular_6_6_6(5);
+let mut buffer = [0u8; 1024 * 1024];
+let mut arena = Arena::new(&mut buffer);
+
+let mut decoder: ColorCodeDecoder<'_, 8> = ColorCodeDecoder::new(&mut arena, config)?;
+let defects = [/* sparse defect indices */];
+let result = decoder.decode(&defects);
+```
+
+### Dual X/Z Decoding
+
+For fault-tolerant QEC, decode X and Z error bases separately. See [prav-circuit-bench](prav-circuit-bench/) for the `--dual-decode` mode.
+
 ## Supported Topologies
 
 | Topology | Neighbors | Use Case |
@@ -101,6 +151,14 @@ python benchmark.py
 ```
 
 Compares prav Python bindings against PyMatching. Tests both individual `decode()` and batch `decode_batch()` methods.
+
+### Circuit-Level Threshold Studies
+
+```bash
+cargo run --release -p prav-circuit-bench -- --distances 3,5,7 --shots 10000
+```
+
+Measures logical error rate on 3D space-time decoding problems. Supports phenomenological noise, Stim DEM files, color codes (`--color-code`), and dual X/Z decoding (`--dual-decode`).
 
 ## Examples
 

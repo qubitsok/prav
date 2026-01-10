@@ -381,6 +381,11 @@ cargo run --release -p prav-circuit-bench -- \
 | `--threshold-study` | false | Use denser error rate sweep |
 | `--min-errors <N>` | 100 | Minimum logical errors before stopping |
 | `--max-shots <N>` | 1000000 | Maximum shots per data point |
+| `--color-code` | false | Run triangular color code benchmark |
+| `--dual-decode` | false | Separate X/Z basis decoding |
+| `--mode-2d` | false | Single measurement round (depth=1) |
+| `--helios` | false | Helios-compatible benchmark (d=13, p=0.1%) |
+| `--quick-bench <D>` | - | Quick single-point benchmark at distance D |
 
 ### Examples
 
@@ -518,6 +523,59 @@ The threshold is where Λ crosses 1.0.
 
 ---
 
+## Color Code Benchmarking
+
+Run triangular color code benchmarks using the restriction decoder approach:
+
+```bash
+# Default color code benchmark (d=3,5,7, p=1%)
+cargo run --release -p prav-circuit-bench -- --color-code
+
+# Specific distances and error rates
+cargo run --release -p prav-circuit-bench -- --color-code --distances 5,7,9 --error-probs 0.005,0.01
+
+# With CSV output
+cargo run --release -p prav-circuit-bench -- --color-code --csv > color_code_results.csv
+```
+
+The color code decoder uses three parallel Union-Find decoders (one per color class: Red, Green, Blue) and combines their results using the restriction decoder approach.
+
+**Output includes:**
+- Decode latency (total and per-color breakdown)
+- Logical error rates
+- Defect distribution by color class
+- Error suppression factor (Lambda)
+
+---
+
+## Dual X/Z Decoding
+
+For realistic fault-tolerant QEC, decode X and Z error bases separately:
+
+```bash
+# Enable dual decoding mode
+cargo run --release -p prav-circuit-bench -- --dual-decode
+
+# With specific configuration
+cargo run --release -p prav-circuit-bench -- --dual-decode --distances 5,7,9 --shots 20000
+
+# CSV output with dual metrics
+cargo run --release -p prav-circuit-bench -- --dual-decode --csv > dual_results.csv
+```
+
+**How it works:**
+1. Splits the unified syndrome into X-only and Z-only components using `SyndromeSplitter`
+2. Decodes each basis with an independent `DynDecoder`
+3. Reports separate X and Z timing and logical error rates
+
+**CSV output uses `DUAL_CSV_HEADER` with columns:**
+- `distance`, `physical_p`, `rounds`, `shots`
+- `x_logical_errors`, `z_logical_errors`, `combined_logical_errors`
+- `x_ler_per_round`, `z_ler_per_round`, `combined_ler_per_round`
+- `x_decode_us`, `z_decode_us`
+
+---
+
 ## Using Stim DEM Files
 
 ### What is Stim?
@@ -593,6 +651,10 @@ The tool automatically parses filenames to extract distance, rounds, and noise l
 prav-circuit-bench/
 ├── src/
 │   ├── main.rs              # CLI, benchmarking loop
+│   ├── dual_decoder.rs      # Dual X/Z basis decoding
+│   ├── color_code_bench.rs  # Color code benchmarking
+│   ├── stats.rs             # Statistics (ThresholdPoint, DualThresholdPoint, LatencyStats)
+│   ├── verification.rs      # Correction verification
 │   ├── dem/
 │   │   ├── mod.rs           # DEM module exports
 │   │   ├── types.rs         # ParsedDem, OwnedErrorMechanism
@@ -600,12 +662,11 @@ prav-circuit-bench/
 │   ├── syndrome/
 │   │   ├── mod.rs           # Syndrome module exports
 │   │   ├── phenomenological.rs  # Built-in noise model
-│   │   └── circuit_sampler.rs   # Sample from DEM
-│   ├── surface_code/
-│   │   ├── mod.rs           # Surface code module exports
-│   │   └── detector_map.rs  # Coordinate mapping
-│   ├── verification.rs      # Correction verification
-│   └── stats.rs             # Statistics calculation
+│   │   ├── circuit_sampler.rs   # Sample from DEM
+│   │   └── splitter.rs          # X/Z syndrome splitting
+│   └── surface_code/
+│       ├── mod.rs           # Surface code module exports
+│       └── detector_map.rs  # Coordinate mapping
 └── scripts/
     └── generate_dems.py     # Stim DEM generation
 ```
@@ -687,11 +748,17 @@ prav-circuit-bench/
 | `ParsedDem` | `dem/types.rs` | Holds parsed DEM data: detectors, error mechanisms |
 | `OwnedErrorMechanism` | `dem/types.rs` | Single error: probability, affected detectors, logical |
 | `SyndromeWithLogical` | `syndrome/` | Syndrome bits + ground-truth logical flips |
+| `SplitSyndromes` | `syndrome/splitter.rs` | Split X/Z syndromes with compact indexing |
+| `SyndromeSplitter` | `syndrome/splitter.rs` | Splits unified syndrome by X/Z basis |
 | `CircuitSampler` | `syndrome/circuit_sampler.rs` | Samples syndromes from a DEM |
 | `DetectorMapper` | `surface_code/detector_map.rs` | Maps DEM coordinates to prav indices |
 | `VerificationResult` | `verification.rs` | Defects resolved + predicted logical |
 | `ThresholdPoint` | `stats.rs` | Results for one (distance, error_rate) configuration |
+| `DualThresholdPoint` | `stats.rs` | Results for dual X/Z decoding with separate metrics |
+| `LatencyStats` | `stats.rs` | Timing percentiles (avg, p50, p95, p99) |
 | `SuppressionFactor` | `stats.rs` | Lambda between two distances |
+| `DualDecoderConfig` | `dual_decoder.rs` | Configuration for dual X/Z decoder |
+| `ColorCodeBenchConfig` | `color_code_bench.rs` | Configuration for color code benchmarks |
 
 ---
 
