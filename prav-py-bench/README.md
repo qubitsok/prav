@@ -2,6 +2,23 @@
 
 Benchmark comparison of prav (Python bindings) vs PyMatching QEC decoders.
 
+## Results Summary
+
+See [PRAV_RESULTS.md](PRAV_RESULTS.md) for full benchmark data.
+
+**Key Findings:**
+- Both decoders achieve **100% defect resolution** across all configurations
+- prav is **3-22x faster** than PyMatching depending on grid size and error rate
+- Average speedup: **7.48x** (3D) / **7.87x** (2D)
+
+### 3D Performance (17×17×17, 17 rounds)
+
+| Error Rate | prav (µs) | PyMatching (µs) | Speedup |
+|------------|-----------|-----------------|---------|
+| 0.001 | 2.94 | 66.05 | **22.5x** |
+| 0.01 | 38.95 | 194.65 | **5.0x** |
+| 0.06 | 83.98 | 518.81 | **6.2x** |
+
 ## Overview
 
 This tool measures decode latency on square surface code grids and compares the performance of two quantum error correction decoders:
@@ -10,6 +27,45 @@ This tool measures decode latency on square surface code grids and compares the 
 - **PyMatching**: Minimum Weight Perfect Matching (MWPM) decoder
 
 Both decoders solve the same problem: given syndrome measurements, determine which corrections to apply. Union Find is an approximate algorithm that runs in near-linear time. MWPM finds optimal solutions but has higher computational cost.
+
+## Understanding 2D vs 3D Decoding
+
+This package includes two benchmarks that solve decoding problems of different dimensionality:
+
+### 2D Decoding (Single Measurement Round)
+
+- **Script**: `benchmark.py`
+- **Topology**: `prav.Decoder(width, height, topology="square")`
+- **Grid sizes**: 17×17, 32×32, 64×64
+
+Decodes syndromes from a **single measurement round**. This is faster but cannot distinguish data qubit errors from measurement errors.
+
+### 3D Decoding (Multiple Measurement Rounds)
+
+- **Script**: `benchmark_3d.py`
+- **Topology**: `prav.Decoder(width, height, topology="3d", depth=depth)`
+- **Grid sizes**: 7×7×7, 11×11×11, 17×17×17
+
+Decodes syndromes across **multiple consecutive measurement rounds**. The third dimension represents **TIME** (measurement rounds):
+
+| Grid | Spatial Size | Rounds | Total Detectors |
+|------|--------------|--------|-----------------|
+| 7×7×7 | 7×7 | 7 | 343 |
+| 11×11×11 | 11×11 | 11 | 1,331 |
+| 17×17×17 | 17×17 | 17 | 4,913 |
+
+**Why 3D matters:** Multi-round decoding correlates syndromes across time to distinguish data qubit errors from measurement errors. This is essential for fault-tolerant QEC.
+
+## Noise Model
+
+Both benchmarks use **phenomenological noise**:
+- Random bit-flip errors with probability p per detector
+- Models measurement errors uniformly across space-time
+
+**This is NOT circuit-level noise**, which would require:
+- Stim detector error model (DEM) files
+- Edge-specific error probabilities based on circuit structure
+- See `prav-circuit-bench` for circuit-level benchmarks
 
 ## Features
 
@@ -43,14 +99,19 @@ pip install -r requirements.txt
 ## Quick Start
 
 ```bash
-# Run with default settings (17x17, 32x32, 64x64 grids)
+# 2D benchmark with default settings (17x17, 32x32, 64x64 grids)
 python benchmark.py
 
-# Faster run with smaller grid
+# 3D benchmark with default settings (7x7x7, 11x11x11, 17x17x17 grids)
+python benchmark_3d.py
+
+# Faster runs with smaller grids
 python benchmark.py --grids 17
+python benchmark_3d.py --grids 7
 
 # Custom configuration
 python benchmark.py --grids 32 64 --shots 5000 --error-probs 0.01 0.05
+python benchmark_3d.py --grids 7 11 --shots 5000 --error-probs 0.01 0.03
 ```
 
 ## Command Line Options
@@ -181,10 +242,13 @@ The benchmark constructs equivalent graphs for both decoders:
 
 | File | Description |
 |------|-------------|
-| `benchmark.py` | Main benchmark script with CLI interface |
-| `syndrome_generator.py` | Generates random syndromes in both formats |
+| `benchmark.py` | 2D benchmark (single measurement round) |
+| `benchmark_3d.py` | 3D benchmark (multiple measurement rounds) |
+| `syndrome_generator.py` | Generates random 2D syndromes in both formats |
+| `syndrome_generator_3d.py` | Generates random 3D syndromes for space-time decoding |
 | `verification.py` | Validates decoder correctness |
 | `requirements.txt` | Python dependencies |
+| `PRAV_RESULTS.md` | Full benchmark results with comparison tables |
 
 ## Dependencies
 
