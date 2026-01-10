@@ -383,6 +383,7 @@ cargo run --release -p prav-circuit-bench -- \
 | `--max-shots <N>` | 1000000 | Maximum shots per data point |
 | `--color-code` | false | Run triangular color code benchmark |
 | `--dual-decode` | false | Separate X/Z basis decoding |
+| `--streaming` | false | Run streaming decoder benchmark (sliding window) |
 | `--mode-2d` | false | Single measurement round (depth=1) |
 | `--helios` | false | Helios-compatible benchmark (d=13, p=0.1%) |
 | `--quick-bench <D>` | - | Quick single-point benchmark at distance D |
@@ -576,6 +577,58 @@ cargo run --release -p prav-circuit-bench -- --dual-decode --csv > dual_results.
 
 ---
 
+## Streaming Decoder Benchmarking
+
+The streaming decoder processes syndromes round-by-round with a sliding window, enabling real-time QEC:
+
+```bash
+# Default streaming benchmark
+cargo run --release -p prav-circuit-bench -- --streaming
+
+# Specific distances and error rates
+cargo run --release -p prav-circuit-bench -- --streaming --distances 5,7,9,13 --error-probs 0.001,0.003,0.005,0.01
+
+# With CSV output
+cargo run --release -p prav-circuit-bench -- --streaming --csv > streaming_results.csv
+```
+
+### Architecture
+
+```
+Round N arrives:
+┌─────────────────────────────────────────────────────┐
+│ Sliding Window (size W)                             │
+│  ┌───────┬───────┬───────┬───────┐                 │
+│  │ R(N-W)│  ...  │ R(N-1)│  R(N) │  ← New round    │
+│  │ EXIT  │       │       │ LOAD  │                  │
+│  └───┬───┴───────┴───────┴───────┘                 │
+│      │                                              │
+│      ▼                                              │
+│  Commit corrections for R(N-W)                      │
+└─────────────────────────────────────────────────────┘
+```
+
+**How it works:**
+1. Syndromes arrive round-by-round as measurements complete
+2. Each round is ingested into the sliding window
+3. When the window is full, the oldest round is committed (corrections extracted)
+4. At stream end, remaining rounds are flushed
+
+**Output includes:**
+- **Ingest latency**: Time to load one round's syndromes and grow clusters
+- **Commit latency**: Time to extract corrections when round exits window
+- **Flush latency**: Time to commit remaining rounds at stream end
+- **Memory usage**: Bytes allocated for the streaming decoder
+- **Per-round latency**: Total processing time per measurement round
+
+**Key properties:**
+- Circular Z-indexing eliminates data copying when window slides
+- Corrections committed only when rounds exit window (guaranteed correctness)
+- Arena-only allocation maintains deterministic timing
+- Suitable for FPGA/embedded systems with limited memory
+
+---
+
 ## Using Stim DEM Files
 
 ### What is Stim?
@@ -653,6 +706,7 @@ prav-circuit-bench/
 │   ├── main.rs              # CLI, benchmarking loop
 │   ├── dual_decoder.rs      # Dual X/Z basis decoding
 │   ├── color_code_bench.rs  # Color code benchmarking
+│   ├── streaming_bench.rs   # Streaming decoder benchmarking
 │   ├── stats.rs             # Statistics (ThresholdPoint, DualThresholdPoint, LatencyStats)
 │   ├── verification.rs      # Correction verification
 │   ├── dem/
@@ -759,6 +813,8 @@ prav-circuit-bench/
 | `SuppressionFactor` | `stats.rs` | Lambda between two distances |
 | `DualDecoderConfig` | `dual_decoder.rs` | Configuration for dual X/Z decoder |
 | `ColorCodeBenchConfig` | `color_code_bench.rs` | Configuration for color code benchmarks |
+| `StreamingBenchConfig` | `streaming_bench.rs` | Configuration for streaming decoder benchmarks |
+| `StreamingThresholdPoint` | `streaming_bench.rs` | Results with ingest/commit latency metrics |
 
 ---
 

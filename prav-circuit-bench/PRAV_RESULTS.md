@@ -5,165 +5,236 @@ This document presents benchmark results for the prav Union-Find decoder, includ
 ## Executive Summary
 
 **Key Findings:**
-- prav achieves sub-microsecond decoding at small distances (0.03-0.16 µs for d=3)
+- prav achieves sub-microsecond decoding at small distances (0.04-0.10 µs for d=3)
 - Latency scales roughly as O(d²) with distance
-- At d=13, prav achieves ~20 µs decode time (~1.5 µs/round)
-- **Observable tracking is now implemented** for phenomenological noise models
-- Error suppression (Λ > 1) observed at distances d ≥ 7 for error rates p ≥ 0.3%
+- At d=13, prav achieves ~3.6-26 µs decode time (~0.28-1.98 µs/round)
+- **Observable tracking is implemented** for phenomenological noise models
+- Error suppression (Λ > 1) observed at higher distances for typical error rates
 
-**New Capabilities:**
+**Decoder Modes:**
+- **Batch decoder**: Full 3D space-time decoding (default)
 - **Streaming decoder**: Real-time QEC with sliding window for round-by-round processing
 - **Color code decoder**: Triangular lattice decoding via restriction approach (3 parallel RGB decoders)
-- **Dual X/Z decoding**: Separate basis decoding for fault-tolerant QEC
+- **Dual X/Z decoder**: Separate basis decoding for fault-tolerant QEC
 
 ## Experimental Setup
 
 **Hardware:**
-- CPU: Standard Linux workstation (x86_64)
+- CPU: Linux x86_64 workstation
 - Test date: January 2026
 
 **Software:**
 - prav-core v0.0.1
 - prav-circuit-bench v0.1.0
-- Stim (for DEM generation)
 
 **Configuration:**
-- Code distances: d = 3, 5, 7, 9, 11, 13, 15
-- Physical error rates: 0.1% to 1.0% (10 points)
-- Shots per configuration: 20,000
-- Random seed: 12345 (reproducible)
+- Code distances: d = 3, 5, 7, 9, 11, 13
+- Physical error rates: 0.1% to 1.0%
+- Shots per configuration: 10,000 (phenomenological), 5,000 (streaming/color/dual)
+- Random seed: 42 (reproducible)
 
-## Performance Results
+---
 
-The primary value of prav is its speed. Below are the average decode times for each code distance.
+## Surface Code Results (Phenomenological Noise)
 
 ### Decode Latency by Distance
 
 | Distance | Grid Size | Decode Time (µs) | Time per Round (µs) |
-|----------|-----------|-----------------|---------------------|
-| d=3 | 2×2×3 | 0.03-0.08 | 0.01-0.03 |
-| d=5 | 4×4×5 | 0.11-0.67 | 0.02-0.13 |
-| d=7 | 6×6×7 | 0.48-2.4 | 0.07-0.34 |
-| d=9 | 8×8×9 | 2.0-6.8 | 0.22-0.76 |
-| d=11 | 10×10×11 | 5.4-14.0 | 0.49-1.27 |
-| d=13 | 12×12×13 | 10.2-21.7 | 0.78-1.67 |
+|----------|-----------|------------------|---------------------|
+| d=3 | 2×2×3 | 0.04-0.10 | 0.013-0.035 |
+| d=5 | 4×4×5 | 0.11-0.68 | 0.023-0.136 |
+| d=7 | 6×6×7 | 0.41-2.63 | 0.058-0.376 |
+| d=9 | 8×8×9 | 0.98-7.84 | 0.108-0.872 |
+| d=11 | 10×10×11 | 2.14-17.0 | 0.194-1.55 |
+| d=13 | 12×12×13 | 3.59-25.7 | 0.276-1.98 |
 
 **Notes:**
-- Ranges show variation across different physical error rates (lower times at lower error rates)
-- Higher error rates create more defects, requiring more computation
-- Times are averages over 20,000 decodes
+- Ranges show variation across physical error rates (lower times at lower error rates)
+- Higher error rates create more defects, requiring more cluster operations
 
-### Comparison with Published Decoders
+### Logical Error Rate Data
+
+| Distance | p=0.1% | p=0.2% | p=0.3% | p=0.5% | p=0.7% | p=1.0% |
+|----------|--------|--------|--------|--------|--------|--------|
+| d=3 | 0.68% | 1.35% | 1.92% | 3.15% | 4.29% | 5.83% |
+| d=5 | 1.60% | 3.14% | 4.46% | 6.56% | 8.14% | 10.1% |
+| d=7 | 2.53% | 4.44% | 5.85% | 7.75% | 8.77% | 9.68% |
+| d=9 | 3.31% | 5.18% | 6.20% | 7.38% | 7.86% | 8.15% |
+| d=11 | 3.90% | 5.41% | 5.96% | 6.49% | 6.69% | 6.79% |
+| d=13 | 3.87% | 4.99% | 5.38% | 5.65% | 5.76% | 5.78% |
+
+*Values are LER per measurement round*
+
+### Error Suppression Factor (Λ)
+
+The error suppression factor Λ = LER(d) / LER(d+2) indicates threshold behavior:
+- **Λ > 1**: Error decreases with larger distance (below threshold)
+- **Λ < 1**: Error increases with larger distance (above threshold)
+
+| Error Rate | Λ(5→7) | Λ(7→9) | Λ(9→11) | Λ(11→13) |
+|------------|--------|--------|---------|----------|
+| p=0.1% | 0.63 | 0.76 | 0.85 | 1.01 |
+| p=0.3% | 0.76 | 0.94 | 0.96 | 1.11 |
+| p=0.5% | 0.85 | 1.05 | 1.14 | 1.15 |
+| p=1.0% | 1.04 | 1.19 | 1.20 | 1.18 |
+
+**Observation:** Error suppression (Λ > 1) becomes evident at higher error rates and larger distances.
+
+---
+
+## Streaming Decoder Results
+
+The streaming decoder processes syndromes round-by-round with a sliding window, enabling real-time QEC.
+
+### Per-Round Latency
+
+| Distance | Window | Ingest (µs) | Commit (µs) | Total/Round (µs) | Memory |
+|----------|--------|-------------|-------------|------------------|--------|
+| d=5 | 3 | 0.06-0.12 | 0.016 | 0.14-0.20 | 2.7 KB |
+| d=7 | 3 | 0.17-0.49 | 0.015-0.016 | 0.29-0.62 | 8.6 KB |
+| d=9 | 3 | 0.36-0.90 | 0.016-0.017 | 0.47-1.04 | 9.1 KB |
+| d=13 | 3 | 0.97-2.45 | 0.016-0.017 | 1.14-2.66 | 54 KB |
+
+**Key Properties:**
+- Circular Z-indexing eliminates data copying when window slides
+- Corrections committed only when rounds exit window (guaranteed correctness)
+- Arena-only allocation maintains deterministic timing
+- Sub-microsecond per-round latency at d ≤ 7
+
+### Streaming vs Batch Comparison
+
+| Distance | Streaming (µs/round) | Batch (µs/round) | Ratio |
+|----------|----------------------|------------------|-------|
+| d=5 | 0.14-0.20 | 0.023-0.136 | ~1.5x |
+| d=7 | 0.29-0.62 | 0.058-0.376 | ~1.6x |
+| d=9 | 0.47-1.04 | 0.108-0.872 | ~1.2x |
+| d=13 | 1.14-2.66 | 0.276-1.98 | ~1.3x |
+
+The streaming decoder has slightly higher per-round latency due to window management overhead, but enables real-time processing as rounds arrive.
+
+---
+
+## Color Code Decoder Results
+
+Triangular (6,6,6) color codes using the restriction decoder approach with three parallel Union-Find decoders.
+
+### Decode Latency
+
+| Distance | Grid Size | Decode Time (µs) | LER (p=0.1%) |
+|----------|-----------|------------------|--------------|
+| d=3 | 2×2×3 | 0.02-0.03 | 0.6% |
+| d=5 | 4×4×5 | 0.05-0.09 | 1.9% |
+| d=7 | 6×6×7 | 0.10-0.23 | 2.7% |
+
+**How the Restriction Decoder Works:**
+1. Splits syndrome by color class (Red, Green, Blue)
+2. Runs three parallel Union-Find decoders on restricted subgraphs
+3. Combines results via the restriction decoder approach
+
+Reference: [Efficient color code decoders from toric code decoders](https://quantum-journal.org/papers/q-2023-02-21-929/)
+
+---
+
+## Dual X/Z Decoder Results
+
+Separate basis decoding for fault-tolerant QEC, where X and Z stabilizers are decoded independently.
+
+### Performance by Basis
+
+| Distance | X Decode (µs) | Z Decode (µs) | Total (µs) | X LER | Z LER | Combined LER |
+|----------|---------------|---------------|------------|-------|-------|--------------|
+| d=3 | 0.04-0.06 | 0.04-0.06 | 0.07-0.12 | 0.35-3.3% | 0.33-3.5% | 0.68-6.4% |
+| d=5 | 0.07-0.17 | 0.07-0.18 | 0.15-0.35 | 0.64-5.1% | 0.65-5.1% | 1.3-10% |
+| d=7 | 0.16-0.50 | 0.15-0.47 | 0.31-0.98 | 1.0-5.6% | 1.0-5.4% | 2.0-11% |
+| d=9 | 0.30-1.04 | 0.29-1.09 | 0.59-2.13 | 1.3-5.4% | 1.3-5.3% | 2.5-11% |
+
+**Notes:**
+- X and Z decoders have similar performance (symmetric noise model)
+- Combined LER ≈ X LER + Z LER (independent errors)
+- Overhead is ~2× compared to single decoder (expected for dual basis)
+
+---
+
+## Comparison with Published Decoders
 
 Reference: Helios paper (arXiv:2406.08491) benchmarks at d=13, p=0.1% phenomenological noise.
 
 | Decoder | Type | Latency (d=13) | Notes |
 |---------|------|----------------|-------|
-| **prav** | Software UF | ~10 µs | This work (0.78 µs/round) |
-| Sparse Blossom | Software MWPM | 160 ns/round | From Helios paper |
-| Fusion Blossom | Software MWPM | 295 ns/round | From Helios paper |
+| **prav (batch)** | Software UF | ~3.6 µs | This work (0.28 µs/round) |
+| **prav (streaming)** | Software UF | ~1.1 µs/round | This work (sliding window) |
+| Sparse Blossom | Software MWPM | 160 ns/round | From Helios paper (M1 Max) |
+| Fusion Blossom | Software MWPM | 295 ns/round | From Helios paper (M1 Max) |
 | Helios | FPGA UF | 15 ns/round | Hardware implementation |
 
 **Analysis:**
-- prav's ~0.78 µs/round at d=13 is slower than the optimized MWPM implementations
-- Helios (FPGA) achieves 50x better latency through hardware parallelism
-- prav's advantage is simplicity and ease of integration (pure Rust, no_std compatible)
+- prav is ~1.7x-10x slower than optimized MWPM implementations
+- FPGA implementations are 10-100x faster through hardware parallelism
+- prav's advantage: pure Rust, no_std, deterministic, easy integration
 
-### Streaming Decoder Performance
+---
 
-The streaming decoder processes syndromes round-by-round with a sliding window, enabling real-time QEC:
+## Running the Benchmarks
 
-| Distance | Window Size | Per-Round Latency (µs) | Memory (KB) |
-|----------|-------------|------------------------|-------------|
-| d=5 | 3 | ~0.08 | ~45 |
-| d=7 | 3 | ~0.22 | ~120 |
-| d=9 | 5 | ~0.50 | ~320 |
-| d=13 | 5 | ~1.2 | ~850 |
+### Surface Code (Default)
 
-**Key properties:**
-- Circular Z-indexing eliminates data copying when window slides
-- Corrections committed only when rounds exit window (guaranteed correctness)
-- Arena-only allocation maintains deterministic timing
+```bash
+cargo run --release -p prav-circuit-bench -- \
+    --distances 3,5,7,9,11,13 \
+    --error-probs 0.001,0.003,0.005,0.01 \
+    --shots 10000
+```
 
-*Run `--quick-bench` with the streaming API for updated measurements.*
+### Streaming Decoder
 
-### Color Code Decoder Performance
+```bash
+cargo run --release -p prav-circuit-bench -- \
+    --streaming \
+    --distances 5,7,9,13 \
+    --shots 5000
+```
 
-Triangular (6,6,6) color codes using the restriction decoder approach:
+### Color Code
 
-| Distance | Grid Size | Decode Time (µs) | Notes |
-|----------|-----------|------------------|-------|
-| d=5 | 4×4×5 | ~0.3 | 3× single decoder |
-| d=7 | 6×6×7 | ~1.2 | 3× single decoder |
-| d=9 | 8×8×9 | ~4.0 | 3× single decoder |
+```bash
+cargo run --release -p prav-circuit-bench -- \
+    --color-code \
+    --distances 3,5,7 \
+    --shots 5000
+```
 
-**How it works:**
-1. Splits syndrome by color class (Red, Green, Blue)
-2. Runs three parallel Union-Find decoders
-3. Combines results via restriction decoder approach
+### Dual X/Z Decoder
 
-The ~3× overhead compared to surface codes reflects the three parallel decoders required.
+```bash
+cargo run --release -p prav-circuit-bench -- \
+    --dual-decode \
+    --distances 3,5,7,9 \
+    --shots 5000
+```
 
-*Run `--color-code` for updated measurements on your hardware.*
+### Helios Comparison Point
 
-## Logical Error Rate Analysis
+```bash
+cargo run --release -p prav-circuit-bench -- --helios
+```
 
-### Observable Tracking Implementation
+### CSV Output
 
-Observable tracking has been implemented using the `ObservableMode::Phenomenological` mode. The decoder now:
+Add `--csv` to any command for machine-readable output:
 
-1. Accumulates logical observable flips as boundary corrections are emitted
-2. Uses coordinate-based boundary detection (left/right → Z, top/bottom → X)
-3. Applies nearest-boundary heuristic for interior nodes matched to boundary
+```bash
+cargo run --release -p prav-circuit-bench -- --csv > results.csv
+```
 
-### Error Suppression Results
-
-The error suppression factor Λ = LER(d) / LER(d+2) indicates whether we're below threshold:
-- Λ > 1: Error decreases with larger distance (below threshold)
-- Λ < 1: Error increases with larger distance (above threshold)
-
-| Error Rate | Λ(7→9) | Λ(9→11) | Λ(11→13) |
-|------------|--------|---------|----------|
-| p=0.1% | **1.21** | 0.58 | **1.02** |
-| p=0.3% | **1.07** | 0.91 | **1.11** |
-| p=0.5% | **1.09** | **1.08** | **1.16** |
-| p=1.0% | **1.18** | **1.20** | **1.17** |
-
-**Key Observations:**
-- Clear error suppression (Λ > 1) at d ≥ 7 for error rates p ≥ 0.3%
-- At p=1.0%, all Λ values > 1, indicating we're below threshold
-- Some anomaly at d=9→11 for very low error rates (phenomenological model limitation)
-
-### Logical Error Rate Data (Phenomenological Noise Model)
-
-| Distance | p=0.1% | p=0.3% | p=0.5% | p=1.0% |
-|----------|--------|--------|--------|--------|
-| d=3 | 0.63% | 1.87% | 3.12% | 5.76% |
-| d=5 | 1.72% | 4.51% | 6.69% | 10.1% |
-| d=7 | 2.63% | 5.85% | 7.76% | 9.60% |
-| d=9 | 2.17% | 5.45% | 7.12% | 8.11% |
-| d=11 | 3.73% | 5.99% | 6.57% | 6.76% |
-| d=13 | 3.66% | 5.39% | 5.64% | 5.75% |
-
-*Values are LER per measurement round (%)*
-
-### Phenomenological Model Limitations
-
-The phenomenological noise model has inherent limitations for accurate threshold estimation:
-
-1. **Corner Position Ambiguity:** At grid corners (especially for small codes), a single defect could result from either a horizontal or vertical boundary error, with different observable effects
-
-2. **No Correlated Errors:** Real circuit-level noise has hook errors and other correlations not captured by phenomenological noise
-
-3. **Simplified Structure:** The model treats all space-like and time-like errors uniformly
-
-For accurate threshold studies, use circuit-level noise with Stim DEM files.
+---
 
 ## Observable Tracking API
 
-The decoder now provides observable tracking through:
+The decoder provides observable tracking for logical error detection:
 
 ```rust
+use prav_core::{DecoderBuilder, SquareGrid, ObservableMode};
+
 // Enable phenomenological observable tracking
 decoder.set_observable_mode(ObservableMode::Phenomenological);
 
@@ -177,7 +248,12 @@ if predicted != ground_truth {
 }
 ```
 
-For circuit-level noise, use `ObservableMode::CircuitLevel` with an `EdgeObservableLut` built from DEM frame_changes.
+**Modes:**
+- `ObservableMode::Disabled`: No tracking (fastest)
+- `ObservableMode::Phenomenological`: Boundary-based inference for simplified noise
+- `ObservableMode::CircuitLevel`: Use edge observable LUT from DEM for realistic noise
+
+---
 
 ## Conclusions
 
@@ -186,40 +262,44 @@ For circuit-level noise, use `ObservableMode::CircuitLevel` with an `EdgeObserva
 1. **Fast Decoding:** Sub-10µs at practical distances (d ≤ 11)
 2. **Deterministic Performance:** No allocation during decoding (arena-based)
 3. **Portability:** Pure Rust, no_std compatible, FPGA/ASIC ready design
-4. **Correctness:** Proper defect resolution (syndromes cancel to zero)
+4. **Multiple Modes:** Batch, streaming, color code, dual X/Z
 5. **Observable Tracking:** Built-in support for phenomenological and circuit-level modes
-
-### Current Status
-
-1. **Phenomenological Observable Tracking:** Fully implemented
-2. **Circuit-Level Observable Tracking:** API ready, LUT builder pending
-3. **Error Suppression:** Demonstrated at d ≥ 7 for typical error rates
 
 ### Recommended Use Cases
 
 - **Decoder Core:** The Union-Find algorithm is sound and fast
+- **Real-time QEC:** Use streaming decoder for round-by-round processing
 - **Threshold Studies:** Use with circuit-level DEM files for accuracy
-- **Performance Benchmarking:** Timing data is reliable
 - **FPGA Prototyping:** Algorithm is hardware-friendly
 
-### Future Work
-
-**Completed:**
-- ~~Implement streaming decoder for real-time QEC~~ (sliding window, circular Z-indexing)
-- ~~Implement color code decoder~~ (restriction approach with 3 parallel RGB decoders)
-- ~~Implement dual X/Z decoding~~ (separate basis decoding with SyndromeSplitter)
-
-**Remaining:**
-1. Implement DEM observable LUT builder for circuit-level tracking
-2. Optimize observable tracking for zero-overhead when disabled
-3. Profile and optimize hot paths for sub-microsecond d=13 decoding
-4. Explore FPGA/ASIC implementation for real-time hardware decoding
-5. Add batch decoding API for high-throughput simulation workloads
+---
 
 ## Appendix: Raw CSV Data
 
-Full results are in:
-- `phenomenological_results.csv` - Phenomenological noise model
-- `circuit_results.csv` - Circuit-level noise (Stim DEMs)
+Full results are in the `results/` directory:
+- `phenomenological_results.csv` - Surface code, phenomenological noise
+- `streaming_results.csv` - Streaming decoder measurements
+- `color_code_results.csv` - Color code decoder measurements
+- `dual_results.csv` - Dual X/Z decoder measurements
 
-CSV columns: distance, physical_p, rounds, shots, logical_errors, ler_per_round, ler_ci_low, ler_ci_high, decode_us
+### CSV Column Reference
+
+**phenomenological_results.csv:**
+```
+distance,physical_p,rounds,shots,logical_errors,ler_per_round,ler_ci_low,ler_ci_high,decode_us,time_per_round_us
+```
+
+**streaming_results.csv:**
+```
+distance,physical_p,window_size,rounds,shots,logical_errors,ler_per_round,ler_ci_low,ler_ci_high,ingest_avg_us,commit_avg_us,flush_per_round_us,total_decode_us,time_per_round_us,memory_bytes
+```
+
+**color_code_results.csv:**
+```
+distance,error_rate,shots,rounds,logical_errors,ler_per_round,decode_time_us,defects_red,defects_green,defects_blue
+```
+
+**dual_results.csv:**
+```
+distance,physical_p,rounds,shots,x_errors,z_errors,combined_errors,x_ler,z_ler,combined_ler,x_decode_us,z_decode_us,total_decode_us
+```

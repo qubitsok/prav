@@ -72,6 +72,7 @@ mod color_code_bench;
 mod dem;
 mod dual_decoder;
 mod stats;
+mod streaming_bench;
 mod surface_code;
 mod syndrome;
 mod verification;
@@ -89,6 +90,7 @@ use prav_core::{
 use crate::color_code_bench::{ColorCodeBenchConfig, benchmark_color_code, generate_color_code_syndromes};
 use crate::dual_decoder::{DualDecoderConfig, benchmark_dual_3d};
 use crate::stats::{CSV_HEADER, DUAL_CSV_HEADER, DualThresholdPoint, LatencyStats, SuppressionFactor, ThresholdPoint, calculate_percentiles};
+use crate::streaming_bench::{STREAMING_CSV_HEADER, StreamingBenchConfig, run_streaming_benchmark};
 use crate::surface_code::DetectorMapper;
 use crate::syndrome::{CircuitSampler, SyndromeWithLogical, generate_correlated_syndromes};
 use crate::verification::verify_with_logical;
@@ -247,6 +249,17 @@ struct Args {
     /// Default distances: 3, 5, 7. Default error rate: 1%.
     #[arg(long)]
     color_code: bool,
+
+    /// Run streaming decoder benchmark with sliding window.
+    ///
+    /// Uses the StreamingDecoder for round-by-round processing instead of
+    /// batch decoding. Measures per-round ingest/commit latency and memory usage.
+    /// Window size defaults to min(3, distance).
+    ///
+    /// This mode is designed for real-time QEC where syndromes arrive
+    /// round-by-round and corrections must be emitted with minimal latency.
+    #[arg(long)]
+    streaming: bool,
 }
 
 /// Error rates for threshold study mode.
@@ -963,6 +976,43 @@ fn run_color_code_benchmark(args: &Args) {
     }
 }
 
+/// Run streaming decoder benchmark.
+///
+/// This function handles the `--streaming` mode which uses the sliding window
+/// StreamingDecoder for round-by-round processing. It measures:
+///
+/// - **Ingest latency**: Time to load one round's syndromes and grow clusters
+/// - **Commit latency**: Time to extract corrections when a round exits the window
+/// - **Flush latency**: Time to commit remaining rounds at stream end
+/// - **Memory usage**: Bytes allocated for the streaming decoder
+fn run_streaming_decoder_benchmark(args: &Args) {
+    // Determine distances and error rates
+    let distances: Vec<usize> = if args.threshold_study {
+        THRESHOLD_STUDY_DISTANCES.to_vec()
+    } else {
+        args.distances.clone()
+    };
+
+    let error_probs: Vec<f64> = args.error_probs.clone().unwrap_or_else(|| {
+        if args.threshold_study {
+            THRESHOLD_STUDY_PROBS.to_vec()
+        } else {
+            CIRCUIT_ERROR_PROBS.to_vec()
+        }
+    });
+
+    let results = run_streaming_benchmark(
+        &distances,
+        &error_probs,
+        args.shots,
+        args.seed,
+        args.csv,
+    );
+
+    // Output is already printed by run_streaming_benchmark
+    let _ = results;
+}
+
 fn main() {
     let mut args = Args::parse();
 
@@ -988,6 +1038,12 @@ fn main() {
     // Handle --color-code mode (triangular color code)
     if args.color_code {
         run_color_code_benchmark(&args);
+        return;
+    }
+
+    // Handle --streaming mode (sliding window decoder)
+    if args.streaming {
+        run_streaming_decoder_benchmark(&args);
         return;
     }
 
